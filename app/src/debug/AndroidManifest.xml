@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <application>
+        <!-- Debug builds only: state hooks driven over adb (design qaHooks); usage in AGENTS.md. -->
+        <receiver
+            android:name=".debug.DebugCommandReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="io.embodit.lowvision.DEBUG" />
+            </intent-filter>
+        </receiver>
+    </application>
+</manifest>

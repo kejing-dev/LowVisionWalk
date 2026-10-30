@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Launcher background: eye-fundus teal blue #1E6E8C (design appIcon; registered in the factory icon list). -->
+    <color name="ic_launcher_background">#1E6E8C</color>
+</resources>
