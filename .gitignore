@@ -48,3 +48,6 @@ __pycache__/
 
 # > 50 MB，GitHub 拒收（push_wip.py）
 tools/spatialml/.venv/Lib/site-packages/cv2/cv2.pyd
+
+# > 50 MB，GitHub 拒收（push_wip.py）
+tools/spatialml/.venv/Lib/site-packages/cv2/cv2.pyd
