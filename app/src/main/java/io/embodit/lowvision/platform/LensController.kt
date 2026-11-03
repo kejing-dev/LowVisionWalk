@@ -14,6 +14,7 @@ import io.embodit.lowvision.app.LvStore
 import io.embodit.lowvision.domain.LensMasks
 import io.embodit.lowvision.domain.Vision
 import java.nio.ByteOrder
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -39,9 +40,13 @@ import kotlinx.coroutines.withTimeoutOrNull
  *   copy out -> RGB u8, convertColor RGB->RGBA into the dynamic texture.
  *
  * Camera: the frame pipeline is submitted every [FRAME_MS] (15 Hz), each run waiting for the last. Sample photos and
- * slider changes: one run after the masks are rewritten. All SpatialML calls run on the main thread scope.
+ * slider changes: one run after the masks are rewritten. All SpatialML calls run on the main thread scope, except the
+ * session's destroy (v0.1.2): on the emulator it never returned once a camera frame had been asked for (OpenMR
+ * `endSession` binder call), which froze the app on 「关闭滤镜窗」 (ANR). It now runs on its own thread and the app does
+ * not wait for it. Without a camera ([hasCamera] false, the emulator) the camera source draws nothing new: the window
+ * keeps the last photo and the home window says there is no camera picture.
  */
-class LensController(private val appContext: Context) : LvStore.LensHost {
+class LensController(private val appContext: Context, private val hasCamera: Boolean) : LvStore.LensHost {
     private val scope: CoroutineScope = MainScope()
     private var job: Job? = null
     private var loop: Job? = null
@@ -67,6 +72,8 @@ class LensController(private val appContext: Context) : LvStore.LensHost {
             scope.launch {
                 val started = SystemClock.elapsedRealtime()
                 val s = runCatching { createSession() }.getOrElse {
+                    // closed while opening: not a failure (no S23 card)
+                    if (it is CancellationException) return@launch
                     LvLog.e("LENS session failed: $it", it)
                     null
                 }
@@ -75,8 +82,10 @@ class LensController(private val appContext: Context) : LvStore.LensHost {
                     return@launch
                 }
                 session = s
-                val ok = runCatching { prepare(s) }.onFailure { LvLog.e("LENS prepare failed: $it", it) }.isSuccess
-                if (!ok) {
+                val prepared = runCatching { prepare(s) }
+                if (prepared.exceptionOrNull() is CancellationException) return@launch
+                prepared.onFailure { LvLog.e("LENS prepare failed: $it", it) }
+                if (prepared.isFailure) {
                     LvStore.lensFailed("SpatialML: scene or tensors could not be created")
                     close()
                     return@launch
@@ -108,8 +117,12 @@ class LensController(private val appContext: Context) : LvStore.LensHost {
         photoName = null
         maskKey = null
         if (s != null) {
-            runCatching { s.destructor.destroy() }.onFailure { LvLog.w("LENS session destroy: $it") }
             LvLog.i("LENS closed")
+            Thread({
+                val t0 = SystemClock.elapsedRealtime()
+                runCatching { s.destructor.destroy() }.onFailure { LvLog.w("LENS session destroy: $it") }
+                LvLog.i("LENS session destroyed in ${SystemClock.elapsedRealtime() - t0} ms")
+            }, "lens-destroy").apply { isDaemon = true }.start()
         }
     }
 
@@ -165,7 +178,11 @@ class LensController(private val appContext: Context) : LvStore.LensHost {
             photoName = source.id
         }
         this.source = source
-        if (source == LensSource.CAMERA) startCamera(s) else {
+        if (source == LensSource.CAMERA && !hasCamera) {
+            loop?.cancel()
+            loop = null
+            LvLog.i("LENS camera source without a camera: keeping the last picture")
+        } else if (source == LensSource.CAMERA) startCamera(s) else {
             loop?.cancel()
             loop = null
             runOnce(s, camera = false)

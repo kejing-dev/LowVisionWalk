@@ -104,29 +104,27 @@ data class HeadPose(val position: Vec3, val rotation: Quat4) {
         get() = rotation.rotate(Vec3.RIGHT)
 }
 
-/** How a room panel is turned: yaw about the vertical and pitch towards the viewer, radians; no roll. */
-data class PanelFacing(val yaw: Float, val pitch: Float) {
+/** How a room panel is turned: yaw about the vertical towards the viewer, radians; never pitch or roll (profile D9). */
+data class PanelFacing(val yaw: Float) {
     val rotation: Quat4
-        get() = Quat4.axisAngle(Vec3.UP, yaw) * Quat4.axisAngle(Vec3.RIGHT, -pitch)
+        get() = Quat4.axisAngle(Vec3.UP, yaw)
 
-    /** Unit vector out of the panel's face, towards the viewer. */
+    /** Unit vector out of the panel's face, towards the viewer (level). */
     val normal: Vec3
-        get() = Vec3(sin(yaw) * cos(pitch), sin(pitch), cos(yaw) * cos(pitch))
+        get() = Vec3(sin(yaw), 0f, cos(yaw))
 }
 
 /**
- * Facing rule for panels that stand in the room: turn about the vertical towards the head, then pitch
- * towards the head (clamped to 60 degrees), never roll. Straight above or below, the last yaw is kept.
+ * Facing rule for panels that stand in the room: turn about the vertical towards the head, nothing else (profile D9:
+ * a panel above or below the eye stays upright). Straight above or below, the last yaw is kept.
  */
 object FacePanel {
-    private const val MAX_PITCH_RAD = 1.0471976f
     private const val KEEP_YAW_WITHIN_M = 0.1f
 
     fun facing(panel: Vec3, head: Vec3, lastYaw: Float?): PanelFacing {
         val to = head - panel
         val flat = kotlin.math.hypot(to.x, to.z)
         val yaw = if (flat < KEEP_YAW_WITHIN_M && lastYaw != null) lastYaw else if (flat < 1e-4f) 0f else kotlin.math.atan2(to.x, to.z)
-        val pitch = kotlin.math.atan2(to.y, flat).coerceIn(-MAX_PITCH_RAD, MAX_PITCH_RAD)
-        return PanelFacing(yaw, pitch)
+        return PanelFacing(yaw)
     }
 }

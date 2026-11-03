@@ -13,6 +13,7 @@ object LvColors {
     val Hemianopia = Color(0xFF9C8BD9) // design-style: fixed-figma-color disease.hemianopia lilac
     val Door = Color(0xFF3DDC84) // design-style: fixed-figma-color door green dashes
     val Danger = Color(0xFFFF5F52) // design-style: fixed-figma-color danger: stepped on the shoe / wrong pick
+    val OnDanger = Color(0xFF2A0A07) // design-style: fixed-figma-color text on the danger red (Quit confirm, v0.1.2)
     val OnPlate = Color(0xFFF2F4F7) // design-style: fixed-figma-color text on plateInk (15.9 : 1)
     val OnPlateDim = Color(0xFFB8C0CA) // design-style: fixed-figma-color secondary text on plateInk (9.7 : 1)
     val PlateRaised = Color(0xFF242A31) // design-style: fixed-figma-color raised row on plateInk

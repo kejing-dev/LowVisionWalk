@@ -24,9 +24,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.painterResource
-import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -49,6 +46,8 @@ import io.embodit.lowvision.domain.Side
 import io.embodit.lowvision.domain.Task
 import io.embodit.lowvision.domain.Vision
 import io.embodit.lowvision.ui.home.HoldButton
+import io.embodit.lowvision.domain.PanelIds
+import io.embodit.lowvision.domain.PanelSpots
 import io.embodit.lowvision.ui.home.colorOf
 import io.embodit.lowvision.ui.home.iconOf
 import io.embodit.lowvision.ui.theme.LvColors
@@ -95,7 +94,7 @@ internal fun SafetyCard(state: LvState?) {
     val c = Copy(state.lang)
     Plate {
         Column {
-            DragHandle(PanelIds.SAFETY, c)
+            DragHint(c)
             Text(c.safetyTitle, style = LvType.title, color = LvColors.OnPlate)
             Spacer(Modifier.height(12.dp))
             c.safetyLines.forEachIndexed { i, line ->
@@ -218,31 +217,13 @@ private fun CaptionButton(icon: Int, label: String, active: Boolean = false, onC
 }
 
 /**
- * Drag handle of a card (D21: cards stay where they are put; drag here to move one, 「叫回」 on the pill brings them
- * back in front). The pointer travel in dp goes to the scene, which moves the card in its own plane.
+ * Where to grab a card (D21): the card itself has no 2D drag. The bar under it is a 3D grip that the Stage's spatial
+ * drag moves in world space (WalkScene.buildGrips); 「叫回」 on the pill brings the cards back in front.
  */
 @Composable
-private fun DragHandle(id: String, c: Copy) {
-    val density = LocalDensity.current.density
-    Box(
-        Modifier.fillMaxWidth()
-            .height(30.dp)
-            .pointerInput(id) {
-                detectDragGestures(
-                    onDragEnd = { ActiveScene.scene?.dragPanel(id, 0f, 0f, end = true) },
-                    onDragCancel = { ActiveScene.scene?.dragPanel(id, 0f, 0f, end = true) },
-                ) { change, amount ->
-                    change.consume()
-                    ActiveScene.scene?.dragPanel(id, amount.x / density, amount.y / density, end = false)
-                }
-            },
-        contentAlignment = Alignment.Center,
-    ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Box(Modifier.size(width = 48.dp, height = 5.dp).background(LvColors.OnPlateDim, RoundedCornerShape(3.dp)))
-            Spacer(Modifier.width(8.dp))
-            Text(c.dragHere, style = LvType.tiny, color = LvColors.OnPlateDim, maxLines = 1)
-        }
+private fun DragHint(c: Copy) {
+    Row(Modifier.fillMaxWidth().height(30.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.Center) {
+        Text(c.dragHere, style = LvType.tiny, color = LvColors.OnPlateDim, maxLines = 1)
     }
 }
 
@@ -313,7 +294,7 @@ internal fun TaskList(state: LvState?) {
     val c = Copy(state.lang)
     Plate(padding = 18.dp) {
         Column {
-            DragHandle(PanelIds.TASKS, c)
+            DragHint(c)
             Task.entries.forEach { t ->
                 val r = w.results[t]
                 Row(Modifier.fillMaxWidth().height(76.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -338,7 +319,7 @@ internal fun TaskList(state: LvState?) {
             SceneObject.entries.forEach { o ->
                 val hidden = w.layout?.hidden?.contains(o) == true
                 val sel = w.selected == o
-                Row(Modifier.fillMaxWidth().height(48.dp), verticalAlignment = Alignment.CenterVertically) {
+                Row(Modifier.fillMaxWidth().height(52.dp), verticalAlignment = Alignment.CenterVertically) {
                     Box(Modifier.size(10.dp).background(if (sel) LvColors.Accent else LvColors.PlateRaised, CircleShape))
                     Spacer(Modifier.width(8.dp))
                     Text(c.objectName(o), style = LvType.body, color = LvColors.OnPlate, modifier = Modifier.weight(1f), maxLines = 1)
@@ -354,7 +335,7 @@ internal fun TaskList(state: LvState?) {
 
 @Composable
 private fun SmallPlateButton(label: String, onClick: () -> Unit) {
-    Button(onClick = onClick, size = ButtonDefaults.Small, modifier = Modifier.height(44.dp), colors = ButtonDefaults.buttonColors(containerColor = LvColors.PlateRaised, contentColor = LvColors.OnPlate)) {
+    Button(onClick = onClick, size = ButtonDefaults.Small, modifier = Modifier.height(48.dp), colors = ButtonDefaults.buttonColors(containerColor = LvColors.PlateRaised, contentColor = LvColors.OnPlate)) {
         Text(label, color = LvColors.OnPlate, maxLines = 1, softWrap = false)
     }
 }
@@ -370,7 +351,7 @@ internal fun ResultCard(state: LvState?) {
     val c = Copy(state.lang)
     Plate {
         Column {
-            DragHandle(PanelIds.RESULT, c)
+            DragHint(c)
             Row(verticalAlignment = Alignment.Bottom) {
                 Text(Copy.clock(r.ms), style = LvType.bigClock, color = LvColors.OnPlate)
                 Spacer(Modifier.width(14.dp))
@@ -404,7 +385,7 @@ internal fun ChecklistCard(state: LvState?) {
     val c = Copy(state.lang)
     Plate {
         Column {
-            DragHandle(PanelIds.CHECKLIST, c)
+            DragHint(c)
             Text(c.checklistTitle, style = LvType.title, color = LvColors.OnPlate)
             Text(c.checklistSub(w.vision), style = LvType.small, color = LvColors.OnPlateDim)
             Spacer(Modifier.height(10.dp))

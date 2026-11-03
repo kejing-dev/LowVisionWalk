@@ -30,6 +30,7 @@ import com.pico.spatial.ui.platform.containers.openWindowContainer
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import io.embodit.lowvision.domain.PanelIds
 import io.embodit.lowvision.platform.LvLog
 
 /** Id of the walk Stage (declared in Main.kt, opened from the home window with style Mixed). */

@@ -11,7 +11,7 @@ class SpatialApplication : Application() {
         super.onCreate()
         val emulator = Build.HARDWARE.contains("ranchu") || Build.HARDWARE.contains("goldfish") || Build.PRODUCT.contains("sdk") || Build.FINGERPRINT.contains("generic")
         LvStore.init(this, Prefs(this), emulator)
-        LvStore.lensHost = LensController(this)
+        LvStore.lensHost = LensController(this, hasCamera = !emulator)
         LvLog.i("APP start hardware=${Build.HARDWARE} product=${Build.PRODUCT} emulator=$emulator")
         launch(::mainApp)
     }

@@ -101,6 +101,8 @@ data class LvState(
     val muted: Boolean = false,
     val selected: Vision? = null,
     val settingsOpen: Boolean = false,
+    /** Settings' 「退出应用」 asked once, waiting for the confirm (profile D26). */
+    val quitAsked: Boolean = false,
     val showSafety: Boolean = true,
     val inStage: Boolean = false,
     val walk: WalkState? = null,
@@ -144,7 +146,7 @@ data class LvState(
             }
             if (lens.error != null) return "S23"
             if (lens.open) return if (lens.comparing) "S22" else if (lens.source == LensSource.CAMERA) "S21" else "S20"
-            if (settingsOpen) return "S05"
+            if (settingsOpen) return if (quitAsked) "S05q" else "S05"
             val v = selected ?: return "S01"
             if (lang == Lang.EN) return "S25"
             return when (v.disease) {

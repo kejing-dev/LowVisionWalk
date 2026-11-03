@@ -81,6 +81,19 @@ object DebugCommands {
                 LvStore.signChosen(if (arg == "wrong") w.signChoices.first { it != w.signWord } else w.signWord)
             }
             "lensSource" -> LvStore.lensSource(LensSource.of(arg ?: a["photo"]) ?: return false)
+            // D26: the same store events as the settings' buttons; no arg = 「退出应用」, confirm / cancel = the two answers
+            "quit" ->
+                when (arg) {
+                    "confirm" -> LvStore.quitConfirmed()
+                    "cancel" -> LvStore.quitCancelled()
+                    else -> {
+                        if (!s().settingsOpen) LvStore.settingsOpen(true)
+                        LvStore.quitClicked()
+                    }
+                }
+            "recall" -> scene()?.recallPanels() ?: return false
+            // D21: a held grip bar under a card, hand travel in Stage metres (same begin / step / end as the real drag)
+            "grip" -> return scene()?.debugGripDrag(arg ?: return false, Vec3(a["dx"]?.toFloatOrNull() ?: 0f, a["dy"]?.toFloatOrNull() ?: 0f, a["dz"]?.toFloatOrNull() ?: 0f)) ?: false
             "lost" -> {
                 scene()?.debugLost = arg == "1"
                 LvStore.trackingChanged(arg == "1")
@@ -216,6 +229,7 @@ object DebugCommands {
             "S03" -> { home(); select(v.copy(disease = Disease.AMD)) }
             "S04" -> { home(); select(v.copy(disease = Disease.HEMIANOPIA)) }
             "S05" -> { home(); select(v); once { LvStore.settingsOpen(true) } }
+            "S05Q" -> { home(); select(v); once { LvStore.settingsOpen(true) }; once { LvStore.quitClicked() } }
             "S25" -> { home(); select(v); once { LvStore.langSelected(Lang.EN) } }
             "S20", "S21", "S22" -> {
                 home()

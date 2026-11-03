@@ -1,6 +1,6 @@
 # Low Vision Walk（低视力体验）
 
-PICO OS 6 spatial app (v0.1.0), Kotlin, PICO Spatial SDK 6.1.9 (BOM), package `io.embodit.lowvision`. Factory app
+PICO OS 6 spatial app (v0.1.2), Kotlin, PICO Spatial SDK 6.1.9 (BOM), package `io.embodit.lowvision`. Factory app
 `low-vision`, skeleton D. Design package (binding):
 `C:\Users\Admin\Downloads\spatial-app-factory\apps\low-vision\design-package.json` (states S01–S28, panels P1–P10,
 entities E1–E6, interactions T1–T18). Built from Life-size Creatures / Spatial Ruler pieces (window + secondary Mixed
@@ -32,7 +32,7 @@ tools/                   dev.sh, make_icons.py (vector drawables + 512 px icon),
 ```
 
 Data flows one way: window taps / Stage gestures / tracker events → `LvStore` → `LvState` → window recomposes,
-`WalkScene.render` applies entities. Per-frame work (head pose, lazy panel follow, safety monitor, challenge distances,
+`WalkScene.render` applies entities. Per-frame work (head pose, panel placement, safety monitor, challenge distances,
 thumbstick turn, drag, door ghost) runs in `WalkFrameSystem` → `WalkScene.onFrame`, never through Compose.
 
 ## The veil (design E1 / LV_Veil) — how it is drawn
@@ -80,21 +80,49 @@ for the scan and marking the door 2.5 m ahead on the way).
 | `bring --es s table\|sign\|door` / `hide --es s …` | the task card's scene-object rows |
 | `testtex --es s 1\|0` | 「F↑」 orientation test texture on the veil |
 | `lang --es s zh\|en` `mute` `lensSource --es s kitchen\|camera` | |
+| `quit` / `quit --es s confirm\|cancel` | settings' 「退出应用」 (opens settings + the confirm) / the two answers (D26; confirm ends the app) |
+| `grip --es s tasks\|result\|checklist\|safety\|menu --ef dx 0.2 --ef dy 0 --ef dz 0` | a card's grip bar held and moved by (dx, dy, dz) m (same begin / step / end as the spatial drag) |
+| `recall` | the pill's 「叫回」: every shown card back in front |
 | `dump` `pose` `panels` | `DUMP` / `SCENE` / `ITEM` (visible + angles) / `POSE` / `PANEL` lines |
 
 ## QA screenshot list (design states)
 
-Home: S01 (nothing picked), S02 / S03 / S04 (each condition), S05 (settings), S25 (English), S23 (lens unavailable).
+Home: S01 (nothing picked), S02 / S03 / S04 (each condition), S05 (settings), S05q (settings with the quit confirm), S25 (English), S23 (lens unavailable).
 Walk (send `seed --ei n 7` first): S06, S07, S08 (+ `ghost 2.5`), S19 (emulator room without a table → virtual table),
 S09, S10 (amd level 3 + `aim --es target cup --ef offsetDeg 6`: mug half under the patch), S10w, S10v, S11, S12, S13,
 S12d, S14 (hemi left: door on the blind side), S16, S14c, S15, S16c, S17, S18, S24, S26, S27.
 The veil is a large transparent surface: shoot each state twice and keep the second.
 
+## Panels (v0.1.2, profile D9 / D21 / B19)
+
+- Every panel pose comes from `domain/PanelLayout.kt` `PanelPlace.placeUpright(head, spot)`: head position + level
+  heading only, upright, turned about the vertical towards the eye (`FacePanel` has no pitch any more). Spots
+  (`PanelSpots`): cards 0.8–0.9 m, centre 10–16° below the level eye line, top edge not above the eye; strips at the
+  edge of the view (hint 16° above, word choices 22° and the pill 30° below). `PanelPlaceTest` checks head down 30° /
+  up 30° / roll 20°.
+- Cards (safety, task list, result, checklist, menu) are placed when they appear and then stay in the room. Each has a
+  3D grip bar under it (`WalkScene.buildGrips`, entity `grip:<id>`): the Stage's `detectSpatialDragGesture` moves the card
+  in world space, the facing is frozen while held and turns to the viewer on release. No Compose `detectDragGestures`.
+  「叫回」 on the pill puts them back in front. The strips (pill, choices, hint) follow the heading lazily (> 25°).
+- Controls ≥ 48 dp everywhere (segments 52 / 48, small buttons 48, the settings switch row 52 and clickable).
+- Settings end with 「退出应用」 → 「退出低视力体验？」 [取消] [退出]: `LvStore.quitConfirmed` closes the lens and the
+  Stage, `finishAndRemoveTask()` on every app task, then the process ends (D26).
+- D24: no colliders on detected planes. Marking the door on a wall = pinch the door ghost the controller ray puts there;
+  the floor catcher (app-owned virtual floor) is on only while marking. See factory `apps/low-vision/build/reality-audit.md`.
+
+## Lens window (P9, S20–S22, S28) — v0.1.1 / v0.1.2
+
+- SpatialML secure session (`platform/LensController.kt`), operator-only filter (blur / contrast / fade / patch masks from
+  `domain/LensMasks.kt`). Emulator: opens with the kitchen sample photo, the masks render (seen: glaucoma tunnel, hemianopia
+  half); the system puts the SpatialML container in front of the home window (no placement API). The camera source on the
+  emulator only shows 「没有摄像头画面」: v0.1.2 does not run the camera pipeline without a camera, because a session that
+  had asked for camera frames never finished destroying (app ANR + OpenMR service ANR, see factory
+  `feedback/pico-cli-feedback.md`). The session is destroyed on its own thread. Real camera: headset only.
+
 ## Not built yet / device only
 
-- **Lens window (P9, S20–S22, S28) is not in v0.1.0.** 「透过滤镜看」 shows the S23 card with 「这一版还没接上」.
-  Reason: no TensorFlow / pySpatialML on this machine to author `lv_filter.tflite`, and an operator-only filter needs
-  on-device iteration (SpatialML `arithmetic` takes single-channel 2-D floats only, `*` is a matrix product). Next step:
-  minimal camera spike on the headset (design `spatialMl.spike`), then the sample-photo source.
+- Lens window with the real camera (S21): look, frame rate (`LENS camera … Hz`), filter strength.
+- 「移到面前」 and 「跳过」 (door) still place 3D objects along the head's heading; the 2026-10-28 D1 gate wants a marker
+  placed by ray / gaze instead (not done in v0.1.2).
 - Device only: veil lag on fast head turns (N1), plane detection quality / TABLE labels (N3), auto take-off thresholds
   (N10), B / Y on the real controller (N9), walking feel.

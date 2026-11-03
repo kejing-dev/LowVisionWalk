@@ -67,7 +67,7 @@ internal class PanelRig(private val stageRoot: Entity, private val onVisibility:
         /** The entity that owns the slot: destroyed with it, and disabled while the slot is hidden. */
         var switch: Entity = holder
 
-        var facing: PanelFacing = PanelFacing(0f, 0f)
+        var facing: PanelFacing = PanelFacing(0f)
             private set
         private var faced = false
 
@@ -121,9 +121,9 @@ internal class PanelRig(private val stageRoot: Entity, private val onVisibility:
         }
 
         internal fun face(viewer: Vec3) {
-            // the walk's panels follow the head below eye level: they turn about the vertical, then tilt up to the eye
+            // upright (D9): the panel turns about the vertical only, never tilts towards the eye
             val f = FacePanel.facing(position, viewer, lastYaw)
-            if (faced && angle(f.yaw, facing.yaw) < FACE_STEP_RAD && abs(f.pitch - facing.pitch) < FACE_STEP_RAD) return
+            if (faced && angle(f.yaw, facing.yaw) < FACE_STEP_RAD) return
             facing = f
             faced = true
             holder.setLocal(rotation = f.rotation)
@@ -234,7 +234,7 @@ internal class PanelRig(private val stageRoot: Entity, private val onVisibility:
         for (slot in slots.values) if (slot.mount == Mount.WORLD && !slot.shown) slot.apply()
     }
 
-    /** Turns every shown room panel towards [viewer] (Stage metres): yaw, then pitch, never roll. */
+    /** Turns every shown room panel towards [viewer] (Stage metres): about the vertical only (D9). */
     fun faceViewer(viewer: Vec3) {
         this.viewer = viewer
         for (slot in slots.values) if (slot.mount == Mount.WORLD && slot.shown && !slot.locked) slot.face(viewer)

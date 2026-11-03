@@ -65,6 +65,10 @@ class Copy(val lang: Lang) {
     val about = t("关于", "About")
     val close = t("关闭", "Close")
     val version = t("版本", "Version")
+    val quitApp = t("退出应用", "Quit app")
+    val quitAsk = t("退出低视力体验？", "Quit Low Vision Walk?")
+    val quitNo = t("取消", "Cancel")
+    val quitYes = t("退出", "Quit")
     val references = t("参考", "References")
     val referenceLines =
         listOf(
@@ -152,7 +156,7 @@ class Copy(val lang: Lang) {
     val putOn = t("戴上", "Put on")
     val more = t("更多", "More")
     val recall = t("叫回", "Recall")
-    val dragHere = t("拖动这里移动卡片", "Drag here to move")
+    val dragHere = t("捏住卡片下面的横条，拖动它", "Pinch the bar under the card to move it")
     val taskList = t("任务列表", "Tasks")
     val changeDisease = t("换病种", "Change")
     val home = t("回首页", "Home")

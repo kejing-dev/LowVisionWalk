@@ -161,7 +161,28 @@ object LvStore {
         set(s.copy(muted = m), "mute $m")
     }
 
-    fun settingsOpen(open: Boolean) = set(s.copy(settingsOpen = open), "settings $open")
+    fun settingsOpen(open: Boolean) = set(s.copy(settingsOpen = open, quitAsked = false), "settings $open")
+
+    // ---- 「退出应用」 (profile D26): ask once, then end every task of the app and the process
+
+    fun quitClicked() = set(s.copy(quitAsked = true), "quit asked")
+
+    fun quitCancelled() = set(s.copy(quitAsked = false), "quit cancelled")
+
+    fun quitConfirmed() {
+        LvLog.i("QUIT confirmed")
+        lensHost?.close()
+        stageCloser?.invoke()
+        val ctx = appContext
+        val tasks = ctx?.getSystemService(android.app.ActivityManager::class.java)?.appTasks.orEmpty()
+        tasks.forEach { t -> runCatching { t.finishAndRemoveTask() }.onFailure { LvLog.w("QUIT finishAndRemoveTask: $it") } }
+        LvLog.i("QUIT removed ${tasks.size} task(s), process ends")
+        // a moment for the Stage and the windows to go; the process then ends, which frees audio, trackers and SpatialML
+        main.postDelayed({
+            android.os.Process.killProcess(android.os.Process.myPid())
+            kotlin.system.exitProcess(0)
+        }, QUIT_EXIT_DELAY_MS)
+    }
 
     fun langSelected(lang: Lang) {
         prefs?.setLang(lang)
@@ -232,6 +253,7 @@ object LvStore {
 
     private var lensAfterStage = false
     private const val LENS_AFTER_STAGE_MS = 2_000L
+    private const val QUIT_EXIT_DELAY_MS = 400L
 
     /** 「透过滤镜看」 from the walk's menu: leave the Full Space first, then open the lens in the Shared Space. */
     fun lensFromWalk() {
