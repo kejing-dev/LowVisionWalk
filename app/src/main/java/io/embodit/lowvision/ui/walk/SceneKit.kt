@@ -97,7 +97,6 @@ internal class SceneKit(private val shared: SharedResources) {
     val shoeHit: Material = unlit(LvColors.Danger)
     val door: Material = unlit(LvColors.Door, twoSided = true)
     val ghost: Material = sheer(LvColors.Door, 0.35f)
-    val grip: Material = unlit(LvColors.OnPlate)
 
     /** Unit box (1 m cube), scaled per use: table, items, sign board, door dashes, shoe. Created lazily ([warmUp]). */
     val box: MeshResource

@@ -74,6 +74,7 @@ import io.embodit.lowvision.R
 import io.embodit.lowvision.app.LensSource
 import io.embodit.lowvision.app.LvState
 import io.embodit.lowvision.app.LvStore
+import io.embodit.lowvision.app.Pages
 import io.embodit.lowvision.domain.Copy
 import io.embodit.lowvision.domain.Disease
 import io.embodit.lowvision.domain.Lang
@@ -85,50 +86,117 @@ import io.embodit.lowvision.ui.theme.FitText
 import io.embodit.lowvision.ui.theme.LvColors
 import io.embodit.lowvision.ui.theme.LvType
 import io.embodit.lowvision.ui.walk.WALK_STAGE_ID
+import io.embodit.lowvision.ui.walk.WalkCardPage
+import io.embodit.lowvision.ui.walk.WalkMenuPage
+import io.embodit.lowvision.ui.window.ExitRow
+import io.embodit.lowvision.ui.window.MainWindow
+import io.embodit.lowvision.ui.window.MainWindowPage
 import kotlin.math.roundToInt
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 /**
- * The home window (design P1): Shared Space, 720 x 600 dp, system glass. Three disease cards; once
- * one is picked, the field diagram, the intro and the severity (or the blind side) open below; the two
- * entries at the bottom. While the lens is open the detail area holds the lens controls (P9). The
- * settings (P2) and the "lens unavailable" card (S23) are drawn over the window. Text on the glass uses labelPrimary
- * only (v0.1.2: labelSecondary measured 3.3 : 1 on the emulator glass, below 4.5 : 1, profile D13).
+ * The home window (design P1, v0.1.4 profile D8 / D21): the app's one system window (Shared Space, 720 x 600 dp, system
+ * glass), built on the factory's main window template. Pages on the system TabBar: 「病种」 (three disease cards; once
+ * one is picked, the field diagram, the intro and the severity; the two entries at the bottom), 「滤镜窗」 (the lens
+ * controls, P9) and the template's settings (P2, quit last, D26). During the walk the same window carries the walk's
+ * cards (safety, task list, result, checklist; the pill's menu as its own page) and steps aside while a task runs
+ * ([LvState.windowWanted]); the system window bar under it moves and closes it, nothing here drags. The "lens
+ * unavailable" card (S23) is drawn over the page. Text on the glass uses labelPrimary only (v0.1.2: labelSecondary
+ * measured 3.3 : 1 on the emulator glass, below 4.5 : 1, profile D13).
  */
 @Composable
 fun HomeWindow(windowId: String = HOME_WINDOW_ID, windowTag: String? = null) {
     val state by LvStore.state.collectAsStateWithLifecycle()
     val c = Copy(state.lang)
     StageBridge(windowId, windowTag)
-    Box(Modifier.fillMaxSize()) {
-        Column(Modifier.fillMaxSize().padding(horizontal = 24.dp, vertical = 18.dp)) {
-            TopBar(state, c)
-            Spacer(Modifier.height(14.dp))
-            DiseaseCards(state, c)
-            Spacer(Modifier.height(14.dp))
-            Box(Modifier.fillMaxWidth().weight(1f)) {
-                val v = state.selected
-                when {
-                    state.inStage -> InStageNote(c)
-                    state.lens.open && v != null -> LensControls(state, v, c)
-                    v != null -> Detail(v, c)
-                    else -> Text(c.pickFirst, style = LvType.body, color = PicoTheme.colorScheme.labelPrimary, modifier = Modifier.align(Alignment.Center))
-                }
-            }
-            Spacer(Modifier.height(12.dp))
-            if (!state.inStage && !state.lens.open) BottomButtons(state, c)
+    StepAside(windowId, windowTag, state)
+    val pages =
+        if (state.inStage && state.walk != null) {
+            listOf(
+                MainWindowPage(Pages.WALK, c.tabWalk, R.drawable.ic_list, showTitle = false) { WalkCardPage(state) },
+                MainWindowPage(Pages.MENU, c.more, R.drawable.ic_more, showTitle = false) { WalkMenuPage(state) },
+            )
+        } else {
+            listOf(
+                MainWindowPage(Pages.LOOK, c.tabLook, R.drawable.ic_eye, showTitle = false) { LookPage(state, c) },
+                MainWindowPage(Pages.LENS, c.lensTitle, R.drawable.ic_lens, showTitle = false) { LensPage(state, c) },
+            )
         }
-        if (state.settingsOpen) SettingsCard(state, c, Modifier.align(Alignment.Center))
+    Box(Modifier.fillMaxSize()) {
+        MainWindow(
+            pages = pages,
+            current = state.page,
+            onSelect = { LvStore.pageSelected(it) },
+            settingsIcon = R.drawable.ic_settings,
+            settingsLabel = c.settings,
+            settings = { SettingsRows(state, c) },
+            exit = ExitRow(c.quitApp, c.quitAsk, c.quitNo, c.quitYes, asked = state.quitAsked) { if (it) LvStore.quitClicked() else LvStore.quitCancelled() },
+            exitColor = LvColors.Danger,
+            onExitColor = LvColors.OnDanger,
+            onExit = { LvStore.quitConfirmed() },
+        )
         state.lens.error?.let { LensErrorCard(c, it, Modifier.align(Alignment.Center)) }
+    }
+}
+
+/** 「病种」 page (S01 – S04): title row, the three disease cards, the detail of the picked one, the two entries. */
+@Composable
+private fun LookPage(state: LvState, c: Copy) {
+    Column(Modifier.fillMaxSize()) {
+        TopBar(state, c)
+        Spacer(Modifier.height(14.dp))
+        DiseaseCards(state, c)
+        Spacer(Modifier.height(14.dp))
+        Box(Modifier.fillMaxWidth().weight(1f)) {
+            val v = state.selected
+            if (v != null) Detail(v, c)
+            else Text(c.pickFirst, style = LvType.body, color = PicoTheme.colorScheme.labelPrimary, modifier = Modifier.align(Alignment.Center))
+        }
+        Spacer(Modifier.height(12.dp))
+        BottomButtons(state, c)
+    }
+}
+
+/** 「滤镜窗」 page (P9, S20 – S22): the lens controls while it is open, otherwise what it is and the button that opens it. */
+@Composable
+private fun LensPage(state: LvState, c: Copy) {
+    val v = state.selected
+    if (state.lens.open && v != null) {
+        LensControls(state, v, c)
+        return
+    }
+    Column(Modifier.fillMaxSize()) {
+        FitText(c.lensTitle, where = "home/c.lensTitle", style = LvType.title, color = PicoTheme.colorScheme.labelPrimary, maxLines = 1)
+        Spacer(Modifier.height(14.dp))
+        Row(Modifier.fillMaxWidth().weight(1f)) {
+            if (v != null) {
+                FieldDiagram(v, Modifier.size(180.dp))
+                Spacer(Modifier.width(20.dp))
+            }
+            Column(Modifier.weight(1f)) {
+                FitText(c.lensNote, where = "home/c.lensNote", style = LvType.body, color = PicoTheme.colorScheme.labelPrimary, maxLines = 3)
+                Spacer(Modifier.height(10.dp))
+                FitText(if (v == null) c.pickFirst else c.lensCameraNote, where = "home/lensPage", style = LvType.small, color = PicoTheme.colorScheme.labelPrimary, maxLines = 1)
+            }
+        }
+        Button(
+            onClick = { LvStore.lensClicked() },
+            enabled = v != null,
+            modifier = Modifier.fillMaxWidth().height(56.dp),
+            colors = ButtonDefaults.buttonColors(containerColor = PicoTheme.colorScheme.fillSecondary, contentColor = PicoTheme.colorScheme.labelPrimary),
+        ) {
+            Icon(painter = painterResource(R.drawable.ic_lens), contentDescription = null, modifier = Modifier.size(22.dp), tint = PicoTheme.colorScheme.labelPrimary)
+            Spacer(Modifier.width(8.dp))
+            FitText(c.lens, where = "home/c.lens", maxLines = 1)
+        }
     }
 }
 
 /** Opens / closes the walk Stage for the store; closes it when the window goes away, unless it stepped aside for the walk. */
 @Composable
 private fun StageBridge(windowId: String, windowTag: String?) {
-    val context = LocalContext.current
     val navigator = LocalSpatialNavigator.current
     val scope = rememberCoroutineScope()
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -138,20 +206,9 @@ private fun StageBridge(windowId: String, windowTag: String?) {
                 override fun openStage() {
                     scope.launch(Dispatchers.Main.immediate) {
                         val result = runCatching { navigator.openStage(WALK_STAGE_ID, StageStyle.Mixed) }
+                        // v0.1.4: the window stays open for the walk, it carries the walk's cards (it steps aside by itself)
                         when (val r = result.getOrNull()) {
-                            is OpenStageResult.Allowed -> {
-                                LvStore.stageResult(true, "Allowed")
-                                // the window draws over Stage content (life-size finding): it closes while the walk is on and
-                                // the Stage opens it again when it ends. Not minimised: the system keeps a minimised window
-                                // minimised across launches (a force-stop mid-walk started the app invisible), and restoring
-                                // needs an open Stage. The close waits until the Stage has settled.
-                                delay(HOME_CLOSE_DELAY_MS)
-                                if (LvStore.state.value.inStage || LvStore.state.value.walk != null) {
-                                    val ok = runCatching { navigator.closeWindowContainer() }
-                                    LvLog.i("HOME closed for the walk: ${ok.exceptionOrNull() ?: "ok"}")
-                                    if (ok.isSuccess) LvStore.hiddenHome = windowId to windowTag
-                                }
-                            }
+                            is OpenStageResult.Allowed -> LvStore.stageResult(true, "Allowed")
                             is OpenStageResult.NotAllowed -> LvStore.stageResult(false, "NotAllowed")
                             is OpenStageResult.Error -> LvStore.stageResult(false, "Error ${r.code} ${r.reason}")
                             null -> LvStore.stageResult(false, "threw ${result.exceptionOrNull()}")
@@ -166,10 +223,19 @@ private fun StageBridge(windowId: String, windowTag: String?) {
         val observer =
             LifecycleEventObserver { _, event ->
                 if (event == Lifecycle.Event.ON_DESTROY && LvStore.hiddenHome == null) {
-                    scope.launch(Dispatchers.Main.immediate) { runCatching { navigator.closeStage() } }
-                    LvStore.stageClosed()
-                    LvStore.lensClosed("home destroyed")
+                    if (LvStore.state.value.inStage) {
+                        // closed with the system window bar's × during the walk: the walk goes on, the pill's 「叫回」 brings it back
+                        LvStore.hiddenHome = windowId to windowTag
+                        LvStore.windowDismissed()
+                    } else {
+                        scope.launch(Dispatchers.Main.immediate) { runCatching { navigator.closeStage() } }
+                        LvStore.stageClosed()
+                        LvStore.lensClosed("home destroyed")
+                    }
                 }
+                // after hiddenHome: the Stage reopens the window from this (WalkScreen)
+                LvStore.homeLife.value = event.name
+                LvLog.i("WINDOW $windowId/$windowTag ${event.name}")
             }
         LvStore.spotHost =
             object : LvStore.SpotHost {
@@ -188,6 +254,29 @@ private fun StageBridge(windowId: String, windowTag: String?) {
     }
 }
 
+/**
+ * During the walk the window closes itself while a task runs ([LvState.windowWanted]) and once for the pill's 「叫回」
+ * ([LvStore.homeRecall]); the Stage opens it again in front of the head (closing and opening is the only way to bring a
+ * system window back in front: native-window-move §3.5). The close waits for the Stage to settle.
+ */
+@Composable
+private fun StepAside(windowId: String, windowTag: String?, state: LvState) {
+    val navigator = LocalSpatialNavigator.current
+    val recall by LvStore.homeRecall.collectAsStateWithLifecycle()
+    val recallSeen = remember { LvStore.homeRecall.value }
+    val wanted = state.windowWanted
+    LaunchedEffect(wanted, recall) {
+        if (wanted && recall == recallSeen) return@LaunchedEffect
+        delay(HOME_CLOSE_DELAY_MS)
+        val now = LvStore.state.value
+        if (!now.inStage || (now.windowWanted && LvStore.homeRecall.value == recallSeen)) return@LaunchedEffect
+        LvStore.hiddenHome = windowId to windowTag
+        val ok = runCatching { navigator.closeWindowContainer() }
+        LvLog.i("WINDOW steps aside (${if (now.windowWanted) "recall" else "phase ${now.walk?.phase}"}): ${ok.exceptionOrNull() ?: "ok"}")
+        if (ok.isFailure) LvStore.hiddenHome = null
+    }
+}
+
 // ---------------------------------------------------------------------------------------------
 // top bar
 // ---------------------------------------------------------------------------------------------
@@ -200,8 +289,6 @@ private fun TopBar(state: LvState, c: Copy) {
             FitText(c.subtitle, where = "home/c.subtitle", style = LvType.body, color = PicoTheme.colorScheme.labelPrimary, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
         LabeledIcon(if (state.muted) R.drawable.ic_sound_off else R.drawable.ic_sound_on, if (state.muted) c.unmute else c.mute) { LvStore.muteClicked() }
-        Spacer(Modifier.width(8.dp))
-        LabeledIcon(R.drawable.ic_settings, c.settings) { LvStore.settingsOpen(true) }
     }
 }
 
@@ -360,7 +447,7 @@ fun FieldDiagram(v: Vision, modifier: Modifier) {
 }
 
 private const val FIELD_DEG = 60f
-private const val HOME_CLOSE_DELAY_MS = 2_000L
+private const val HOME_CLOSE_DELAY_MS = 1_500L
 
 private fun fieldBitmap(v: Vision, px: Int): Bitmap {
     val p = v.params
@@ -402,19 +489,6 @@ private fun BottomButtons(state: LvState, c: Copy) {
                 FitText(c.lens, where = "home/c.lens", maxLines = 1)
                 FitText(c.lensCameraNote, where = "home/c.lensCameraNote", style = LvType.small, maxLines = 1)
             }
-        }
-    }
-}
-
-@Composable
-private fun InStageNote(c: Copy) {
-    Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.Center, horizontalAlignment = Alignment.CenterHorizontally) {
-        Text(c.inWalk, style = LvType.cardName, color = PicoTheme.colorScheme.labelPrimary)
-        Spacer(Modifier.height(16.dp))
-        Button(onClick = { LvStore.homeClicked() }, colors = ButtonDefaults.buttonColors(containerColor = PicoTheme.colorScheme.fillSecondary, contentColor = PicoTheme.colorScheme.labelPrimary)) {
-            Icon(painter = painterResource(R.drawable.ic_home), contentDescription = null, modifier = Modifier.size(20.dp), tint = PicoTheme.colorScheme.labelPrimary)
-            Spacer(Modifier.width(8.dp))
-            FitText(c.endWalk, where = "home/c.endWalk", maxLines = 1)
         }
     }
 }
@@ -503,6 +577,54 @@ fun HoldButton(label: String, modifier: Modifier, container: Color = PicoTheme.c
 // overlays: settings (P2 / S05), lens unavailable (S23)
 // ---------------------------------------------------------------------------------------------
 
+/** The app's rows of the template's settings page (P2 / S05); the template adds 「退出应用」 last (D26). */
+@Composable
+private fun SettingsRows(state: LvState, c: Copy) {
+    val ink = PicoTheme.colorScheme.labelPrimary
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Text(c.language, style = LvType.body, color = ink, modifier = Modifier.weight(1f))
+        SegmentControl(modifier = Modifier.width(224.dp).height(52.dp), backgroundColor = PicoTheme.colorScheme.fillTertiary) {
+            listOf(Lang.ZH to "中文", Lang.EN to "English").forEach { (l, label) ->
+                SegmentItem(
+                    selected = state.lang == l,
+                    onClick = { LvStore.langSelected(l) },
+                    modifier = Modifier.width(108.dp).height(48.dp),
+                    textStyle = PicoTheme.typography.labelLarge,
+                    colors =
+                        SegmentControlDefaults.colors(
+                            itemBackgroundColor = Color.Transparent,
+                            itemContentColor = ink,
+                            selectedItemBackgroundColor = LvColors.Accent,
+                            selectedItemContentColor = LvColors.OnAccent,
+                        ),
+                    title = { FitText(text = label, where = "home/label", maxLines = 1, softWrap = false) },
+                )
+            }
+        }
+    }
+    Row(Modifier.fillMaxWidth().height(52.dp).clickable { LvStore.muteClicked() }, verticalAlignment = Alignment.CenterVertically) {
+        Text(c.mute, style = LvType.body, color = ink, modifier = Modifier.weight(1f))
+        Switch(checked = state.muted, onCheckedChange = { LvStore.muteClicked() })
+    }
+    Row(Modifier.fillMaxWidth().height(52.dp).clickable { LvStore.showSafetyChanged(!state.showSafety) }, verticalAlignment = Alignment.CenterVertically) {
+        Text(c.safetyAgain, style = LvType.body, color = ink, modifier = Modifier.weight(1f))
+        Switch(checked = state.showSafety, onCheckedChange = { LvStore.showSafetyChanged(it) })
+    }
+    Column {
+        Text(c.about, style = LvType.cardName, color = ink)
+        Spacer(Modifier.height(4.dp))
+        Text(c.disclaimer, style = LvType.body, color = ink)
+        Spacer(Modifier.height(4.dp))
+        Text(c.honesty, style = LvType.small, color = ink)
+        Spacer(Modifier.height(8.dp))
+        Text(c.references, style = LvType.small, color = ink)
+        c.referenceLines.forEach { Text("· $it", style = LvType.small, color = ink) }
+        Spacer(Modifier.height(6.dp))
+        Text("${c.version} ${BuildConfig.VERSION_NAME}", style = LvType.small, color = ink)
+    }
+}
+
+/** A card drawn over the page inside the window (S23); opaque so it reads over any page. */
 @Composable
 private fun OverlayCard(modifier: Modifier, width: Int, content: @Composable () -> Unit) {
     Box(
@@ -513,85 +635,6 @@ private fun OverlayCard(modifier: Modifier, width: Int, content: @Composable () 
             .padding(20.dp)
     ) {
         content()
-    }
-}
-
-@Composable
-private fun SettingsCard(state: LvState, c: Copy, modifier: Modifier) {
-    OverlayCard(modifier, 560) {
-        Column {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(c.settings, style = LvType.title, color = LvColors.OnPlate, modifier = Modifier.weight(1f))
-                Button(onClick = { LvStore.settingsOpen(false) }, size = ButtonDefaults.Small, modifier = Modifier.height(48.dp), colors = ButtonDefaults.buttonColors(containerColor = LvColors.PlateRaised, contentColor = LvColors.OnPlate)) {
-                    Icon(painter = painterResource(R.drawable.ic_close), contentDescription = null, modifier = Modifier.size(18.dp), tint = LvColors.OnPlate)
-                    Spacer(Modifier.width(6.dp))
-                    FitText(c.close, where = "home/c.close", color = LvColors.OnPlate, maxLines = 1)
-                }
-            }
-            Spacer(Modifier.height(14.dp))
-            // the long part scrolls; 「退出应用」 stays at the bottom of the card (profile D26)
-            Column(Modifier.weight(1f, fill = false).verticalScroll(rememberScrollState())) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(c.language, style = LvType.body, color = LvColors.OnPlate, modifier = Modifier.weight(1f))
-                SegmentControl(modifier = Modifier.width(224.dp).height(52.dp), backgroundColor = LvColors.PlateRaised) {
-                    listOf(Lang.ZH to "中文", Lang.EN to "English").forEach { (l, label) ->
-                        SegmentItem(
-                            selected = state.lang == l,
-                            onClick = { LvStore.langSelected(l) },
-                            modifier = Modifier.width(108.dp).height(48.dp),
-                            textStyle = PicoTheme.typography.labelLarge,
-                            colors =
-                                SegmentControlDefaults.colors(
-                                    itemBackgroundColor = Color.Transparent,
-                                    itemContentColor = LvColors.OnPlate,
-                                    selectedItemBackgroundColor = LvColors.Accent,
-                                    selectedItemContentColor = LvColors.OnAccent,
-                                ),
-                            title = { FitText(text = label, where = "home/label", maxLines = 1, softWrap = false) },
-                        )
-                    }
-                }
-            }
-            Spacer(Modifier.height(10.dp))
-            Row(Modifier.fillMaxWidth().height(52.dp).clickable { LvStore.showSafetyChanged(!state.showSafety) }, verticalAlignment = Alignment.CenterVertically) {
-                Text(c.safetyAgain, style = LvType.body, color = LvColors.OnPlate, modifier = Modifier.weight(1f))
-                Switch(checked = state.showSafety, onCheckedChange = { LvStore.showSafetyChanged(it) })
-            }
-            Spacer(Modifier.height(14.dp))
-            Text(c.about, style = LvType.cardName, color = LvColors.OnPlate)
-            Spacer(Modifier.height(4.dp))
-            Text(c.disclaimer, style = LvType.body, color = LvColors.OnPlate)
-            Spacer(Modifier.height(4.dp))
-            Text(c.honesty, style = LvType.small, color = LvColors.OnPlateDim)
-            Spacer(Modifier.height(8.dp))
-            Text(c.references, style = LvType.small, color = LvColors.OnPlateDim)
-            c.referenceLines.forEach { Text("· $it", style = LvType.small, color = LvColors.OnPlateDim) }
-            Spacer(Modifier.height(6.dp))
-            Text("${c.version} ${BuildConfig.VERSION_NAME}", style = LvType.small, color = LvColors.OnPlateDim)
-            }
-            Spacer(Modifier.height(12.dp))
-            QuitRow(state, c)
-        }
-    }
-}
-
-/** Last item of the settings (profile D26): 「退出应用」, then a confirm in place, [取消] [退出]. */
-@Composable
-private fun QuitRow(state: LvState, c: Copy) {
-    if (!state.quitAsked) {
-        Button(onClick = { LvStore.quitClicked() }, modifier = Modifier.fillMaxWidth().height(52.dp), colors = ButtonDefaults.buttonColors(containerColor = LvColors.PlateRaised, contentColor = LvColors.OnPlate)) {
-            FitText(c.quitApp, where = "home/c.quitApp", color = LvColors.OnPlate, maxLines = 1)
-        }
-        return
-    }
-    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-        FitText(c.quitAsk, where = "home/c.quitAsk", style = LvType.cardName, color = LvColors.OnPlate, modifier = Modifier.weight(1f), maxLines = 1)
-        Button(onClick = { LvStore.quitCancelled() }, modifier = Modifier.width(112.dp).height(52.dp), colors = ButtonDefaults.buttonColors(containerColor = LvColors.PlateRaised, contentColor = LvColors.OnPlate)) {
-            FitText(c.quitNo, where = "home/c.quitNo", color = LvColors.OnPlate, maxLines = 1)
-        }
-        Button(onClick = { LvStore.quitConfirmed() }, modifier = Modifier.width(112.dp).height(52.dp), colors = ButtonDefaults.buttonColors(containerColor = LvColors.Danger, contentColor = LvColors.OnDanger)) {
-            FitText(c.quitYes, where = "home/c.quitYes", color = LvColors.OnDanger, maxLines = 1)
-        }
     }
 }
 

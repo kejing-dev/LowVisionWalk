@@ -5,41 +5,33 @@ import kotlin.math.cos
 import kotlin.math.sin
 
 /**
- * Where a walk panel sits relative to the head (profile D9 / D21): [distM] ahead along the head's yaw, [dropDeg] below
- * the level eye line (+ down), size in dp. [follows]: a small strip that keeps up with the view's yaw (pill, word
- * choices, hint; profile D21 allows small status strips at the edge of the view); every other panel is a card that is
- * placed once and then stays in the room.
+ * Where a walk strip sits relative to the head (profile D9 / D21): [distM] ahead along the head's yaw, [dropDeg] below
+ * the level eye line (+ down), size in dp. [follows]: the strip keeps up with the view's yaw (pill, word choices, hint;
+ * profile D21 allows small status strips at the edge of the view). v0.1.4: the cards (safety, task list, result,
+ * checklist, menu) are pages of the home window, a system window moved with the system's own window bar (D21 / D8).
  */
 data class PanelSpot(val distM: Float, val dropDeg: Float, val widthDp: Float, val heightDp: Float, val follows: Boolean = false)
 
-/** Attachment panels of the pool (design P3 – P8, P10, S24). */
+/** Attachment strips of the Stage (design P4, P6, P10). */
 object PanelIds {
-    const val SAFETY = "safety"
     const val HINT = "hint"
     const val PILL = "pill"
-    const val MENU = "menu"
-    const val TASKS = "tasks"
-    const val RESULT = "result"
-    const val CHECKLIST = "checklist"
     const val CHOICES = "choices"
-    val pool = listOf(SAFETY, HINT, PILL, MENU, TASKS, RESULT, CHECKLIST, CHOICES)
+    val pool = listOf(HINT, PILL, CHOICES)
 }
 
 /**
- * v0.1.2 (profile D9 / D21): cards stand 0.8 – 0.9 m ahead with their centre 10 – 16° below the level eye line and the
- * top edge not above the eye; the strips sit at the edge of the view (hint above, word choices and the pill below the
- * tallest card, so nothing overlaps). A panel's angular size is set by its dp size only (scale = distance).
+ * v0.1.2 (profile D9 / D21): the strips sit at the edge of the view; v0.1.4: clear of the home window that the system
+ * opens straight ahead, its TabBar and its window bar (hint above, word choices and the pill below). A panel's angular size is set by its dp size only
+ * (scale = distance).
  */
 val PanelSpots =
     mapOf(
-        PanelIds.SAFETY to PanelSpot(0.9f, 11f, 520f, 440f),
-        PanelIds.HINT to PanelSpot(0.9f, -16f, 600f, 96f, follows = true),
-        PanelIds.PILL to PanelSpot(0.8f, 30f, 580f, 88f, follows = true),
-        PanelIds.MENU to PanelSpot(0.8f, 12f, 520f, 410f), // v0.1.3 q2-4: 400 cut 「黄斑变性」 / Glaucoma / Hemianopia
-        PanelIds.TASKS to PanelSpot(0.9f, 14f, 560f, 600f),
-        PanelIds.RESULT to PanelSpot(0.9f, 10f, 500f, 420f), // v0.1.3 q2-4: the challenge button has its own row
-        PanelIds.CHECKLIST to PanelSpot(0.9f, 16f, 600f, 680f),
-        PanelIds.CHOICES to PanelSpot(0.8f, 22f, 600f, 76f, follows = true), // v0.1.3: 440 cut "TWICE DAILY" (D13 tour)
+        // v0.1.4: the home window spans about ±17° around the eye line, its TabBar up to 21.5° above, its window bar
+        // down to 21° below (emulator measurement): the hint goes above the TabBar, the word choices below the window bar
+        PanelIds.HINT to PanelSpot(0.9f, -25f, 600f, 96f, follows = true),
+        PanelIds.PILL to PanelSpot(0.8f, 31f, 580f, 88f, follows = true),
+        PanelIds.CHOICES to PanelSpot(0.8f, 24.5f, 600f, 76f, follows = true), // v0.1.3: 440 cut "TWICE DAILY" (D13 tour)
     )
 
 /** A panel's place in Stage metres and its turn about the vertical (+Z of the panel towards the viewer). No pitch, no roll. */

@@ -94,11 +94,10 @@ object DebugCommands {
                         LvStore.quitClicked()
                     }
                 }
-            "recall" -> scene()?.recallPanels() ?: return false
+            "recall" -> LvStore.recallWindow()
+            "page" -> LvStore.pageSelected(arg ?: return false)
             // T17: the floor marker as a trigger / pinch on the floor s metres ahead would put it (through handleTap)
             "marker" -> return scene()?.debugMarker(arg?.toFloatOrNull() ?: 2f) ?: false
-            // D21: a held grip bar under a card, hand travel in Stage metres (same begin / step / end as the real drag)
-            "grip" -> return scene()?.debugGripDrag(arg ?: return false, Vec3(a["dx"]?.toFloatOrNull() ?: 0f, a["dy"]?.toFloatOrNull() ?: 0f, a["dz"]?.toFloatOrNull() ?: 0f)) ?: false
             "lost" -> {
                 scene()?.debugLost = arg == "1"
                 LvStore.trackingChanged(arg == "1")
@@ -146,7 +145,7 @@ object DebugCommands {
     private fun dump() {
         val st = s()
         val w = st.walk
-        LvLog.i("DUMP state=${st.stateId} lang=${st.lang} muted=${st.muted} selected=${st.selected} inStage=${st.inStage} lens=${st.lens} phase=${w?.phase} veilOn=${w?.veilOn} visible=${w?.veilVisible} run=${w?.run} results=${w?.results?.keys} hint=${w?.hint} menu=${w?.menuOpen} tasks=${w?.taskListOpen} word=${w?.signWord} choices=${w?.signChoices} selectedObj=${w?.selected}")
+        LvLog.i("DUMP state=${st.stateId} lang=${st.lang} muted=${st.muted} selected=${st.selected} inStage=${st.inStage} lens=${st.lens} phase=${w?.phase} veilOn=${w?.veilOn} visible=${w?.veilVisible} run=${w?.run} results=${w?.results?.keys} hint=${w?.hint} menu=${w?.menuOpen} tasks=${w?.taskListOpen} page=${st.page} window=${w?.window} wanted=${st.windowWanted} life=${LvStore.homeLife.value} hidden=${LvStore.hiddenHome} word=${w?.signWord} choices=${w?.signChoices} selectedObj=${w?.selected}")
         scene()?.lines("scene")?.forEach { LvLog.i(it) }
     }
 

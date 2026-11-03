@@ -176,15 +176,6 @@ class WalkScene : LvStore.SceneHost {
     private var drag: Drag? = null
     private var lastDragEndMs = 0L
 
-    private var panelDrag: PanelDrag? = null
-
-    /** A card held by its grip bar (D21): world-space position only, the facing stays frozen until it is let go. */
-    private class PanelDrag(val id: String, val start: Vec3) {
-        var totalPx = Vec3.ZERO
-        var at: Vec3 = start
-        var debugDelta: Vec3? = null
-    }
-
     private class Drag(val obj: SceneObject, val start: Placement) {
         var totalPx = Vec3.ZERO
         var moved = false
@@ -218,12 +209,7 @@ class WalkScene : LvStore.SceneHost {
         // meshes one per main-thread message (see SceneKit.warmUp): the veil's quad now, the box a moment later
         k.warmUp(0)
         buildVeil(root, res)
-        main.postDelayed({
-            if (stageRoot === root) {
-                k.warmUp(1)
-                buildGrips(k)
-            }
-        }, BOX_WARMUP_MS)
+        main.postDelayed({ if (stageRoot === root) k.warmUp(1) }, BOX_WARMUP_MS)
         // the objects wait a moment: mesh creation blocks the main thread, and the Stage's first frames and
         // panels come first (ANR on the emulator when everything was built inside attach)
         objectsPending = root to k
@@ -659,13 +645,8 @@ class WalkScene : LvStore.SceneHost {
             if (on && !slot.shown) slot.show() else if (!on) slot.hide()
         }
         val p = w?.phase
-        want(PanelIds.SAFETY, p == WalkPhase.SAFETY)
         want(PanelIds.HINT, w?.hint != null && p != WalkPhase.SAFETY)
         want(PanelIds.PILL, p in WalkState.VEIL_PHASES)
-        want(PanelIds.MENU, w?.menuOpen == true && p in WalkState.VEIL_PHASES)
-        want(PanelIds.TASKS, p == WalkPhase.READY && w.taskListOpen && !w.menuOpen)
-        want(PanelIds.RESULT, p == WalkPhase.RESULT && !w.menuOpen)
-        want(PanelIds.CHECKLIST, p == WalkPhase.CHECKLIST)
         want(PanelIds.CHOICES, p == WalkPhase.TASK && w.run?.task == Task.SIGN && !w.menuOpen)
     }
 
@@ -702,7 +683,6 @@ class WalkScene : LvStore.SceneHost {
         repeat(controller.takeByPresses()) { if (w.phase in WalkState.VEIL_PHASES) LvStore.buttonToggle() }
         stepStick(w, now, dt)
         stepDrag(w)
-        stepPanelDrag()
         nearFade(w)
         placePanels()
         rig.faceViewer(head.position)
@@ -860,9 +840,9 @@ class WalkScene : LvStore.SceneHost {
     var debugStick: Float? = null
     var debugStickUntil = 0L
 
-    // ---- panels (D9 / D21): every pose comes from PanelPlace.placeUpright (head position + level heading only).
-    // Cards are put in front of the head when they appear and then stay in the room (grip bar to move, 「叫回」 to bring
-    // back); the small strips (pill, word choices, hint) keep up with the heading lazily (design P4: > 25°).
+    // ---- strips (D9): every pose comes from PanelPlace.placeUpright (head position + level heading only). The small
+    // strips (pill, word choices, hint) keep up with the heading lazily (design P4: > 25°). The cards are pages of the
+    // home window since v0.1.4: the system window bar moves them (D21), nothing here drags a panel.
 
     private fun placePanels() {
         val rig = rig ?: return
@@ -872,88 +852,10 @@ class WalkScene : LvStore.SceneHost {
         val heading = followYaw ?: headingNow
         for ((id, spot) in PanelSpots) {
             val slot = rig[id] ?: continue
-            if (!slot.shown) {
-                fixedAt.remove(id)
-                continue
-            }
-            if (spot.follows) {
-                slot.locked = false
-                val at = PanelPlace.placeUpright(head, spot, heading).position
-                if (abs(slot.scaleX - spot.distM) > 0.01f) slot.show(at = at, kx = spot.distM, ky = spot.distM) else slot.moveTo(at)
-            } else if (id !in fixedAt) {
-                val at = PanelPlace.placeUpright(head, spot, headingNow).position
-                fixedAt[id] = at
-                slot.locked = false
-                slot.show(at = at, kx = spot.distM, ky = spot.distM)
-                slot.locked = true
-            }
+            if (!slot.shown) continue
+            val at = PanelPlace.placeUpright(head, spot, if (spot.follows) heading else headingNow).position
+            if (abs(slot.scaleX - spot.distM) > 0.01f) slot.show(at = at, kx = spot.distM, ky = spot.distM) else slot.moveTo(at)
         }
-    }
-
-    /** Where each fixed card stands (Stage metres); cleared when the card hides, so it comes back in front (D9). */
-    private val fixedAt = HashMap<String, Vec3>()
-
-    /** A grip bar under each card (D21): a spatial drag on it moves the card in world space ([onSpatialDrag]). */
-    private fun buildGrips(k: SceneKit) {
-        val rig = rig ?: return
-        for ((id, spot) in PanelSpots) {
-            if (spot.follows) continue
-            val slot = rig[id] ?: continue
-            // the holder is scaled by the distance (x, y): sizes below are divided by it to come out in metres
-            val k1 = spot.distM
-            val grip = Entity().named("$GRIP_PREFIX$id")
-            slot.holder.addChild(grip)
-            grip.setLocal(position = Vec3(0f, -(spot.heightDp * DP_M / 2f) - GRIP_GAP_M / k1, 0f))
-            grip.components.set(CollisionComponent(collisionShape = listOf(ShapeResource.createBox(Vector3(GRIP_HIT_W_M / k1, GRIP_HIT_H_M / k1, 0.04f))), physicsMaterial = PhysicsMaterialResource()))
-            grip.components.set(InteractableComponent())
-            k.boxEntity(k.grip, "$GRIP_PREFIX$id").also {
-                grip.addChild(it)
-                it.setLocal(scale = Vec3(GRIP_W_M / k1, GRIP_H_M / k1, 0.008f))
-            }
-        }
-    }
-
-    private fun beginPanelDrag(id: String): Boolean {
-        val at = fixedAt[id] ?: return false
-        if (rig?.get(id)?.shown != true) return false
-        panelDrag = PanelDrag(id, at)
-        LvLog.i("PANEL drag start $id at ${LvLog.pos(at)}")
-        return true
-    }
-
-    /** Per frame while a grip is held: the card follows the hand's travel in Stage metres; its facing does not change. */
-    private fun stepPanelDrag() {
-        val d = panelDrag ?: return
-        val slot = rig?.get(d.id) ?: return
-        val hand = d.debugDelta ?: handDelta(d.totalPx) ?: return
-        val next = d.start + hand
-        if ((next - d.at).length < PANEL_DRAG_STEP_M) return
-        d.at = next
-        fixedAt[d.id] = next
-        slot.moveTo(next)
-    }
-
-    private fun endPanelDrag() {
-        val d = panelDrag ?: return
-        panelDrag = null
-        lastDragEndMs = SystemClock.elapsedRealtime()
-        rig?.get(d.id)?.faceNow()
-        LvLog.i("PANEL dragged ${d.id} to ${LvLog.pos(d.at)} yaw=${rig?.get(d.id)?.facing?.yaw}")
-    }
-
-    /** Debug `grip`: the same begin / step / end as a held grip bar, with the hand's travel given in Stage metres. */
-    fun debugGripDrag(id: String, delta: Vec3): Boolean {
-        if (!beginPanelDrag(id)) return false
-        panelDrag?.debugDelta = delta
-        stepPanelDrag()
-        endPanelDrag()
-        return true
-    }
-
-    /** 「叫回面前」 (D21): every shown card comes back in front of the current head. */
-    fun recallPanels() {
-        fixedAt.clear()
-        LvLog.i("PANEL recall")
     }
 
     // =========================================================================================
@@ -1026,14 +928,6 @@ class WalkScene : LvStore.SceneHost {
 
     fun onSpatialDrag(phase: String, value: SpatialDragValue) {
         val name = runCatching { value.targetEntity?.getName() }.getOrNull() ?: "none"
-        if (name.startsWith(GRIP_PREFIX) || panelDrag != null) {
-            when (phase) {
-                "start" -> beginPanelDrag(name.removePrefix(GRIP_PREFIX))
-                "move" -> panelDrag?.let { val a = value.dragAmount; it.totalPx = Vec3(it.totalPx.x + a.x, it.totalPx.y + a.y, it.totalPx.z + a.z) }
-                else -> endPanelDrag()
-            }
-            return
-        }
         when (phase) {
             "start" -> {
                 val w = state.walk
@@ -1188,13 +1082,6 @@ class WalkScene : LvStore.SceneHost {
         const val VEIL_PX = 1024
         const val VEIL_SORT_BIAS = -1.0f
         const val FOLLOW_DEG = 25f
-        const val GRIP_PREFIX = "grip:"
-        const val GRIP_GAP_M = 0.035f
-        const val GRIP_W_M = 0.18f
-        const val GRIP_H_M = 0.014f
-        const val GRIP_HIT_W_M = 0.26f
-        const val GRIP_HIT_H_M = 0.06f
-        const val PANEL_DRAG_STEP_M = 0.001f
         const val BOX_WARMUP_MS = 1_500L
     }
 }

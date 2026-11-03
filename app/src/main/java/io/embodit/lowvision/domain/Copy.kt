@@ -45,8 +45,10 @@ class Copy(val lang: Lang) {
     val notBlack = t("真实的人多半不觉得是黑的，只是那里什么都没有；这里用暗色表示看不见", "Real patients rarely see black — that part is simply missing. Dark here means 'not seen'.")
     val turnHead = t("暗斑跟着头走，不跟眼睛——尽量转头去看", "The patch follows your head, not your eyes — turn your head to look")
     val disclaimer = t("体验示意，不是诊断，也不代表某一位病人的视野。如果你自己的视力有变化，请去看眼科。", "A simulation, not a diagnosis, and not any one patient's vision. If your own sight changes, see an eye doctor.")
-    val inWalk = t("正在戴上体验中——看你面前的药丸和卡片", "The walk is on — look at the pill and cards in front of you")
-    val endWalk = t("结束体验", "End the walk")
+
+    // ---- home window pages (system TabBar, v0.1.4)
+    val tabLook = t("病种", "Conditions")
+    val tabWalk = t("体验", "Walk")
 
     fun degrees(v: Vision): String {
         val d = VeilParams.degreesOf(v) ?: return ""
@@ -157,7 +159,6 @@ class Copy(val lang: Lang) {
     val putOn = t("戴上", "Put on")
     val more = t("更多", "More")
     val recall = t("叫回", "Recall")
-    val dragHere = t("捏住卡片下面的横条，拖动它", "Pinch the bar under the card to move it")
     val taskList = t("任务列表", "Tasks")
     val changeDisease = t("换病种", "Change")
     val home = t("回首页", "Home")

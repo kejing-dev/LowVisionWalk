@@ -1,17 +1,19 @@
 # Low Vision Walk（低视力体验）
 
-PICO OS 6 spatial app (v0.1.3), Kotlin, PICO Spatial SDK 6.1.9 (BOM), package `io.embodit.lowvision`. Factory app
+PICO OS 6 spatial app (v0.1.4), Kotlin, PICO Spatial SDK 6.1.9 (BOM), package `io.embodit.lowvision`. Factory app
 `low-vision`, skeleton D. Design package (binding):
 `C:\Users\Admin\Downloads\spatial-app-factory\apps\low-vision\design-package.json` (states S01–S28, panels P1–P10,
 entities E1–E6, interactions T1–T18). Built from Life-size Creatures / Spatial Ruler pieces (window + secondary Mixed
 Stage, panel pool, head / plane / controller trackers). All 2D UI is SpatialUI + `PicoTheme` (`LvTheme`); no Material
 anywhere (factory gate `bin/material-grep.txt`).
 
-The home window is a planar window in the Shared Space (720 × 600 dp, system glass): three condition cards
-(glaucoma, macular degeneration, hemianopia), the field diagram, the intro and the severity (5 illustrative steps, shown
-as degrees; hemianopia has left / right instead). 「戴上体验」 opens a secondary Mixed Stage: safety card → scan (≤ 5 s,
-virtual stand-ins for what is missing) → mark the door → three in-place tasks (find the mug, read the sign, find the
-door) with the veil on → optional challenge (walk to the door, a shoe on the side you can't see) → 「家里怎么改」 checklist.
+The home window is the app's one system window (Shared Space planar window, 720 × 600 dp, system glass), built on the
+factory main window template (v0.1.4, profile D8 / D21): pages on the native TabBar 「病种」 (three condition cards,
+the field diagram, the intro and the severity — 5 illustrative steps shown as degrees, hemianopia has left / right),
+「滤镜窗」 (lens controls) and the template's settings (quit last). 「戴上体验」 opens a secondary Mixed Stage: safety card
+→ scan (≤ 5 s, virtual stand-ins for what is missing) → mark the door → three in-place tasks (find the mug, read the
+sign, find the door) with the veil on → optional challenge (walk to the door, a shoe on the side you can't see) →
+「家里怎么改」 checklist. The walk's cards are pages of the same window; it steps aside while a task runs.
 
 ## Structure
 
@@ -23,10 +25,13 @@ app/src/main/java/io/embodit/lowvision/
                          stick rate, SafetyMonitor), Copy (all zh / en copy), Geometry
   app/                   LvState + LvStore: the one state holder (home window, Stage, debug receiver share it)
   platform/              LvLog, Prefs, HeadTracker, PlaneTracker (→ domain Surface), ControllerInput (stick, B / Y, ray)
-  ui/home/HomeWindow.kt  home window, field diagram (Compose Canvas), settings overlay, lens controls / S23 card
-  ui/walk/               WalkScreen (Stage composable + panel pool), WalkScene (ECS: veil, table + items, sign, door,
-                         shoe, colliders, per-frame system), WalkPanels (pill, menu, task list, result, checklist,
-                         safety, hint bar, word choices), PanelRig (ported pool), SceneKit (materials, unit quad)
+  ui/window/MainWindow.kt  factory main window template (native TabBar, settings page + quit, SideAugment)
+  ui/home/HomeWindow.kt  the home window's pages, field diagram (Compose Canvas), settings rows, lens controls, S23
+                         card; StageBridge (opens the Stage) and StepAside (the window closes itself during the walk)
+  ui/walk/               WalkScreen (Stage composable + strip pool; reopens the home window), WalkScene (ECS: veil,
+                         table + items, sign, door, shoe, colliders, per-frame system), WalkPanels (the walk's window
+                         pages: safety, task list, result, checklist, menu; the Stage strips: pill, hint bar, word
+                         choices), PanelRig (ported pool), SceneKit (materials, unit quad)
 app/src/debug/           DebugCommandReceiver + DebugCommands (debug builds only)
 tools/                   dev.sh, make_icons.py (vector drawables + 512 px icon), subset_cjk_font.py, harness/
 ```
@@ -83,9 +88,9 @@ for the scan and marking the door 2.5 m ahead on the way).
 | `lang --es s zh\|en` `mute` `lensSource --es s kitchen\|pills\|stairs\|camera` | |
 | `lensRepeat --es s 0\|1` | 0 = one filter run per photo (chained after the init pipeline), 1 = every 250 ms (default); next open |
 | `quit` / `quit --es s confirm\|cancel` | settings' 「退出应用」 (opens settings + the confirm) / the two answers (D26; confirm ends the app) |
-| `grip --es s tasks\|result\|checklist\|safety\|menu --ef dx 0.2 --ef dy 0 --ef dz 0` | a card's grip bar held and moved by (dx, dy, dz) m (same begin / step / end as the spatial drag) |
-| `recall` | the pill's 「叫回」: every shown card back in front |
-| `dump` `pose` `panels` | `DUMP` / `SCENE` / `ITEM` (visible + angles) / `POSE` / `PANEL` lines |
+| `page --es s look\|lens\|walk\|menu\|settings` | a TabBar item of the home window (same `LvStore.pageSelected`) |
+| `recall` | the pill's 「叫回」: the home window closes and opens again in front (`WINDOW recall` → `steps aside` → `reopened`) |
+| `dump` `pose` `panels` | `DUMP` (incl. `page= window= wanted= life= hidden=`) / `SCENE` / `ITEM` (visible + angles) / `POSE` / `PANEL` lines |
 
 ## QA screenshot list (design states)
 
@@ -95,20 +100,27 @@ S09, S10 (amd level 3 + `aim --es target cup --ef offsetDeg 6`: mug half under t
 S12d, S14 (hemi left: door on the blind side), S16, S14c, S15, S16c, S17, S18, S24, S26, S27.
 The veil is a large transparent surface: shoot each state twice and keep the second.
 
-## Panels (v0.1.2, profile D9 / D21 / B19)
+## Panels (v0.1.2 – v0.1.4, profile D8 / D9 / D21 / B19)
 
 - Every panel pose comes from `domain/PanelLayout.kt` `PanelPlace.placeUpright(head, spot)`: head position + level
   heading only, upright, turned about the vertical towards the eye (`FacePanel` has no pitch any more). Spots
   (`PanelSpots`): cards 0.8–0.9 m, centre 10–16° below the level eye line, top edge not above the eye; strips at the
   edge of the view (hint 16° above, word choices 22° and the pill 30° below). `PanelPlaceTest` checks head down 30° /
   up 30° / roll 20°.
-- Cards (safety, task list, result, checklist, menu) are placed when they appear and then stay in the room. Each has a
-  3D grip bar under it (`WalkScene.buildGrips`, entity `grip:<id>`): the Stage's `detectSpatialDragGesture` moves the card
-  in world space, the facing is frozen while held and turns to the viewer on release. No Compose `detectDragGestures`.
-  「叫回」 on the pill puts them back in front. The strips (pill, choices, hint) follow the heading lazily (> 25°).
+- v0.1.4 (profile D21 / D8, factory `prompts/snippets/native-window-move.md`): the cards (safety, task list, result,
+  checklist, menu) are pages of the home window, a system window: the system window bar under it (dot → × / drag
+  handle / −) moves and closes it; no app code drags a panel, no grip bars. `LvState.windowWanted`: the window closes
+  itself during the scan, the door marking and a running task (`WINDOW steps aside`), and the Stage opens it again once
+  the window reported `ON_DESTROY` (`WINDOW reopened`). 「叫回」 = close, then open (comes back in front). The system × in
+  the walk keeps the walk going (`WINDOW dismissed by the user`), 「叫回」 or the next step brings it back.
+- The strips (pill, choices, hint) are the only Stage panels; they follow the heading lazily (> 25°) and sit clear of
+  the window (−17° … +17°), its TabBar (to −21.5°) and its window bar (to +21°): hint −25°, choices 24.5°, pill 31°
+  (`PanelPlaceTest.stripsClearOfTheWindow`).
+- Emulator: when it idles at 2–4 fps a window opened again can draw only its top part (rest black, buttons too) until it
+  is opened again; run `tools/harness/emu.ps1 fast on` before opening windows / taking shots (factory KJ-34).
 - Controls ≥ 48 dp everywhere (segments 52 / 48, small buttons 48, the settings switch row 52 and clickable).
-- Settings end with 「退出应用」 → 「退出低视力体验？」 [取消] [退出]: `LvStore.quitConfirmed` closes the lens and the
-  Stage, `finishAndRemoveTask()` on every app task, then the process ends (D26).
+- The settings page (template) ends with 「退出应用」 → 「退出低视力体验？」 [取消] [退出]: `LvStore.quitConfirmed` closes the
+  lens and the Stage, `finishAndRemoveTask()` on every app task, then the process ends (D26).
 - D24: no colliders on detected planes. Marking the door on a wall = pinch the door ghost the controller ray puts there;
   the floor catcher (app-owned virtual floor) is on only while marking. See factory `apps/low-vision/build/reality-audit.md`.
 
@@ -118,7 +130,7 @@ The veil is a large transparent surface: shoot each state twice and keep the sec
   `domain/LensMasks.kt`). Container 1500 × 1125 × 100 units = 0.6 × 0.45 m (1 unit = 0.4 mm, measured); the panel glb
   (`tools/spatialml/make_lens_assets.py`) is 0.59 × 0.4425 m. v0.1.2's 1.2 × 0.9 m panel in a 0.48 × 0.36 m container
   showed only the middle 40 % of the picture.
-- Placement (QA #2 q2-2): the system puts the container in the middle of the window that has focus when the session is
+- Placement (QA #2 q2-2; v0.1.4: the controls are the 「滤镜窗」 page): the system puts the container in the middle of the window that has focus when the session is
   created, 5.7 cm in front of it, and raises a window over it when the window gets focus. So 「透过滤镜看」 first opens the
   lens spot window (`ui/home/LensSpot.kt`, `WindowContainer("LensSpot", placement = Placement.right(home))`, a new tag
   per open) and creates the session once that window is focused (`LvStore.lensSpotReady`, 3 s fallback). The container

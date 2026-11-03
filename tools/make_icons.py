@@ -88,6 +88,7 @@ def ui_icons():
         "ic_sound_off": [fill("M3,9 L7,9 L12,5 L12,19 L7,15 L3,15 Z"), s("M15,9 L21,15"), s("M21,9 L15,15")],
         "ic_close": [s("M6,6 L18,18"), s("M18,6 L6,18")],
         "ic_check": [s("M5,12.5 L10,17 L19,7", 2.4)],
+        "ic_lens": [s(circle(10.5, 10.5, 6.5)), s("M15.3,15.3 L20.5,20.5", 2.4)],
         # recall: a card with an arrow pulling it towards you (down-left, the viewer)
         "ic_recall": [s("M9,4 L20,4 L20,14 L9,14 Z"), s("M12,17 L5,20"), s("M5,15.5 L5,20 L9.5,20")],
     }

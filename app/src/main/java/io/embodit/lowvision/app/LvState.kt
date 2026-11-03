@@ -42,6 +42,27 @@ enum class HintKind {
 
 data class Hint(val kind: HintKind, val untilMs: Long? = null)
 
+/**
+ * The home window during the walk (v0.1.4, profile D21 / D8): the walk's cards are pages of the one system window.
+ * [AUTO]: shown, except while a task runs or the scene is being scanned / the door marked (it would stand in front of
+ * the table, the sign and the door), [RECALLED]: brought back by the pill's 「叫回」, [DISMISSED]: closed with the system
+ * window bar's ×. Back to [AUTO] whenever the phase changes.
+ */
+enum class WindowAsk {
+    AUTO,
+    RECALLED,
+    DISMISSED,
+}
+
+/** Pages of the home window (system TabBar items); [SETTINGS] is the template's last page. */
+object Pages {
+    const val LOOK = "look"
+    const val LENS = "lens"
+    const val WALK = "walk"
+    const val MENU = "menu"
+    const val SETTINGS = "settings"
+}
+
 /** A task being timed. [task] null = the optional walk challenge. */
 data class TaskRun(val task: Task?, val startMs: Long, val mistakes: Int = 0, val takeOffs: Int = 0)
 
@@ -74,6 +95,7 @@ data class WalkState(
     val trackingLost: Boolean = false,
     val misses: Map<String, Int> = emptyMap(),
     val checklist: List<String> = emptyList(),
+    val window: WindowAsk = WindowAsk.AUTO,
 ) {
     val allMainDone: Boolean
         get() = Task.entries.all { results.containsKey(it) }
@@ -84,6 +106,9 @@ data class WalkState(
 
     companion object {
         val VEIL_PHASES = setOf(WalkPhase.READY, WalkPhase.TASK, WalkPhase.RESULT, WalkPhase.CHALLENGE)
+
+        /** Phases in which the home window steps aside by itself ([WindowAsk.AUTO]). */
+        val WINDOW_ASIDE = setOf(WalkPhase.SCANNING, WalkPhase.MARK_DOOR, WalkPhase.TASK, WalkPhase.CHALLENGE)
     }
 }
 
@@ -114,7 +139,30 @@ data class LvState(
     val lens: LensState = LensState(),
     val best: Map<String, Long> = emptyMap(),
     val isEmulator: Boolean = false,
+    /** The home page shown outside the walk ([Pages.LOOK] or [Pages.LENS]). */
+    val homePage: String = Pages.LOOK,
 ) {
+    /** The home window's page (its TabBar selection). */
+    val page: String
+        get() {
+            if (settingsOpen) return Pages.SETTINGS
+            val w = walk
+            if (inStage && w != null) return if (w.menuOpen) Pages.MENU else Pages.WALK
+            return homePage
+        }
+
+    /** Whether the home window should be open now (v0.1.4: it carries the walk's cards, see [WindowAsk]). */
+    val windowWanted: Boolean
+        get() {
+            val w = walk ?: return true
+            if (!inStage) return true
+            return when (w.window) {
+                WindowAsk.RECALLED -> true
+                WindowAsk.DISMISSED -> false
+                WindowAsk.AUTO -> settingsOpen || w.menuOpen || w.phase !in WalkState.WINDOW_ASIDE
+            }
+        }
+
     /** Design state id, for the log and QA. */
     val stateId: String
         get() {

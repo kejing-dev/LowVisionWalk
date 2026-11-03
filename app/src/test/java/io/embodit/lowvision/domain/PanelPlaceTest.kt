@@ -35,7 +35,8 @@ class PanelPlaceTest {
 
     private val poses = listOf("down 30" to head(40f, pitchDeg = -30f), "up 30" to head(40f, pitchDeg = 30f), "roll 20" to head(40f, rollDeg = 20f))
 
-    private val cards = PanelSpots.filterValues { !it.follows }
+    /** A card-like spot (v0.1.2's task card): the walk cards are home-window pages since v0.1.4, the math stays for any spot. */
+    private val cards = mapOf("card" to PanelSpot(0.9f, 14f, 560f, 600f))
 
     @Test
     fun cardsStandUprightBelowTheEyeAtComfortDistance() {
@@ -75,7 +76,7 @@ class PanelPlaceTest {
     fun placedStraightAheadOfTheHeadsYaw() {
         for (yaw in listOf(0f, 37f, 90f, 180f, -135f)) {
             for (h in listOf(head(yaw), head(yaw, pitchDeg = -30f), head(yaw, pitchDeg = 30f), head(yaw, rollDeg = 20f))) {
-                val p = PanelPlace.placeUpright(h, PanelSpots.getValue(PanelIds.TASKS))
+                val p = PanelPlace.placeUpright(h, cards.getValue("card"))
                 val to = p.position - h.position
                 val bearing = atan2(to.x, to.z)
                 assertTrue("yaw $yaw", angleDiffDeg(bearing, levelBearing(yaw)) < 2f)
@@ -87,29 +88,39 @@ class PanelPlaceTest {
     @Test
     fun lookingStraightDownStillPlacesAhead() {
         val h = head(60f, pitchDeg = -89f)
-        val p = PanelPlace.placeUpright(h, PanelSpots.getValue(PanelIds.SAFETY))
+        val p = PanelPlace.placeUpright(h, PanelSpots.getValue(PanelIds.PILL))
         val to = p.position - h.position
         assertTrue(angleDiffDeg(atan2(to.x, to.z), levelBearing(60f)) < 2f)
     }
 
-    /** Cards and the strips that show with them do not overlap in the view (D8): angular ranges below the eye. */
+    /**
+     * The strips do not overlap the home window (D8): the system opens it straight ahead, centred on the eye line, and it
+     * spans about ±17° vertically, its TabBar reaches [TABBAR_TOP_DEG] above the eye line and its window bar (dot, or ×
+     * / handle / − when hovered) [CAPTION_BOTTOM_DEG] below (emulator 6.1.0, v0.1.4 screenshots, focal length taken from
+     * the pill at 30°); the hint is above the TabBar, the word choices and the pill below the window bar.
+     */
     @Test
-    fun stripsClearOfTheCards() {
+    fun stripsClearOfTheWindow() {
         fun range(id: String): ClosedFloatingPointRange<Float> {
             val s = PanelSpots.getValue(id)
             val half = deg(s.heightDp * PANEL_DP_M / 2f)
             return (s.dropDeg - half)..(s.dropDeg + half)
         }
         val pill = range(PanelIds.PILL)
-        for (card in listOf(PanelIds.TASKS, PanelIds.RESULT, PanelIds.MENU)) {
-            assertTrue("$card vs pill", range(card).endInclusive < pill.start)
-        }
-        assertTrue("hint above the cards", range(PanelIds.HINT).endInclusive < 0f)
+        assertTrue("hint above the window's TabBar", range(PanelIds.HINT).endInclusive < -TABBAR_TOP_DEG)
+        assertTrue("choices below the window bar", range(PanelIds.CHOICES).start > CAPTION_BOTTOM_DEG)
+        assertTrue("pill no lower than 40° (D34)", range(PanelIds.PILL).endInclusive < 40f)
         assertTrue("choices above the pill", range(PanelIds.CHOICES).endInclusive < pill.start)
     }
 
     private companion object {
         /** Panel metres per dp at scale 1 (ui.walk.DP_M). */
         const val PANEL_DP_M = 0.0008f
+
+        /** Top of the home window's system TabBar above the level eye line, degrees (v0.1.4 emulator screenshots). */
+        const val TABBAR_TOP_DEG = 21.5f
+
+        /** Bottom of the home window's system window bar below the level eye line, degrees (v0.1.4 emulator screenshots). */
+        const val CAPTION_BOTTOM_DEG = 21f
     }
 }

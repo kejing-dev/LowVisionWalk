@@ -116,7 +116,9 @@ object LvStore {
 
     private fun walk(why: String, f: (WalkState) -> WalkState) {
         val w = s.walk ?: return
-        set(s.copy(walk = f(w)), why)
+        val n = f(w)
+        // a new step of the walk: the home window follows the step again (shown, or aside while a task runs)
+        set(s.copy(walk = if (n.phase != w.phase && n.window != WindowAsk.AUTO) n.copy(window = WindowAsk.AUTO) else n), why)
     }
 
     fun now() = SystemClock.elapsedRealtime()
@@ -180,6 +182,41 @@ object LvStore {
     }
 
     fun settingsOpen(open: Boolean) = set(s.copy(settingsOpen = open, quitAsked = false), "settings $open")
+
+    // =========================================================================================
+    // the home window (v0.1.4, profile D21 / D8): one system window, pages on the system TabBar, moved and closed with
+    // the system window bar. During the walk it carries the walk's cards and steps aside while a task runs.
+    // =========================================================================================
+
+    /** A TabBar item (or the debug `page` command): settings, a home page, or the walk's card / menu page. */
+    fun pageSelected(page: String) {
+        val w = s.walk
+        when {
+            page == Pages.SETTINGS -> settingsOpen(true)
+            s.inStage && w != null -> set(s.copy(settingsOpen = false, quitAsked = false, walk = w.copy(menuOpen = page == Pages.MENU)), "page $page")
+            page == Pages.LOOK || page == Pages.LENS -> set(s.copy(settingsOpen = false, quitAsked = false, homePage = page), "page $page")
+            else -> LvLog.w("PAGE unknown $page")
+        }
+    }
+
+    /** Lifecycle of the home window as it reports it (ON_CREATE … ON_DESTROY, "never"); the Stage reopens it from this. */
+    val homeLife = MutableStateFlow("never")
+
+    /** The window closes itself once to come back in front ([recallWindow]); it sets this, the window acts on it. */
+    val homeRecall = MutableStateFlow(0)
+
+    /** The pill's 「叫回」 (D21 「叫回面前」): the home window comes back in front of the head (close, then open again). */
+    fun recallWindow() {
+        LvLog.i("WINDOW recall life=${homeLife.value}")
+        walk("window recall") { it.copy(window = WindowAsk.RECALLED) }
+        if (homeLife.value != "ON_DESTROY" && homeLife.value != "never") homeRecall.value++
+    }
+
+    /** The user closed the home window with the system window bar's × during the walk: it stays closed for this step. */
+    fun windowDismissed() {
+        LvLog.i("WINDOW dismissed by the user")
+        walk("window dismissed") { it.copy(window = WindowAsk.DISMISSED) }
+    }
 
     // ---- 「退出应用」 (profile D26): ask once, then end every task of the app and the process
 
@@ -506,7 +543,7 @@ object LvStore {
 
     // ---- pill menu (S24, T16)
 
-    fun menuToggle() = walk("menu") { it.copy(menuOpen = !it.menuOpen) }
+    fun menuToggle() = walk("menu") { it.copy(menuOpen = !it.menuOpen, window = if (!it.menuOpen) WindowAsk.AUTO else it.window) }
 
     fun menuTaskList() = walk("menu tasks") { abandon(it).copy(menuOpen = false, taskListOpen = true, phase = if (it.phase == WalkPhase.CHECKLIST) it.phase else WalkPhase.READY) }
 
@@ -596,7 +633,7 @@ object LvStore {
             set(s.copy(lens = LensState(open = false, error = "no SpatialML host")), "lens unavailable")
             return
         }
-        set(s.copy(lens = LensState(open = true, source = source, openedAtMs = now()), settingsOpen = false), "lens open")
+        set(s.copy(lens = LensState(open = true, source = source, openedAtMs = now()), settingsOpen = false, homePage = Pages.LENS), "lens open")
         val spot = spotHost
         if (spot == null) {
             host.open(source, v, false)

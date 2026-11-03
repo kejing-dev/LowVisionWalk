@@ -120,6 +120,23 @@ fun WalkScreen() {
 
     LaunchedEffect(scene, state) { scene.render(state) }
 
+    // v0.1.4 (profile D21 / D8): the walk's cards are pages of the home window. When it stepped aside (a task ran, or the
+    // pill's 「叫回」 closed it) and is wanted again, it opens again in front of the head; an open right after the close is
+    // swallowed, so this waits for the window's ON_DESTROY (native-window-move §3.5).
+    val homeLife by LvStore.homeLife.collectAsStateWithLifecycle()
+    val wanted = state.windowWanted
+    LaunchedEffect(wanted, homeLife) {
+        if (!wanted || (homeLife != "ON_DESTROY" && homeLife != "never")) return@LaunchedEffect
+        val hidden = LvStore.hiddenHome ?: return@LaunchedEffect
+        delay(HOME_REOPEN_DELAY_MS)
+        if (!LvStore.state.value.windowWanted || LvStore.hiddenHome != hidden) return@LaunchedEffect
+        LvStore.hiddenHome = null
+        val app = context.applicationContext
+        val reopened = runCatching { app.openWindowContainer(hidden.first, hidden.second) }
+        LvLog.i("WINDOW reopened ${hidden.first}/${hidden.second} for ${state.walk?.phase}: ${reopened.exceptionOrNull() ?: "ok"}")
+        if (reopened.isFailure) runCatching { app.openWindowContainer(HOME_AGAIN_ID, HOME_AGAIN_TAG) }
+    }
+
     val bindTick = scene.bindTick.intValue
     fun shown(id: String) = if (scene.panelShown[id] == true) state else null
     SpatialView(
@@ -139,13 +156,8 @@ fun WalkScreen() {
                     }
                 },
         attachments = {
-            AttachmentPanel(PanelIds.SAFETY) { PanelBox(PanelIds.SAFETY) { SafetyCard(shown(PanelIds.SAFETY)) } }
             AttachmentPanel(PanelIds.HINT) { PanelBox(PanelIds.HINT) { HintBar(shown(PanelIds.HINT)) } }
             AttachmentPanel(PanelIds.PILL) { PanelBox(PanelIds.PILL) { Pill(shown(PanelIds.PILL)) } }
-            AttachmentPanel(PanelIds.MENU) { PanelBox(PanelIds.MENU) { PillMenu(shown(PanelIds.MENU)) } }
-            AttachmentPanel(PanelIds.TASKS) { PanelBox(PanelIds.TASKS) { TaskList(shown(PanelIds.TASKS)) } }
-            AttachmentPanel(PanelIds.RESULT) { PanelBox(PanelIds.RESULT) { ResultCard(shown(PanelIds.RESULT)) } }
-            AttachmentPanel(PanelIds.CHECKLIST) { PanelBox(PanelIds.CHECKLIST) { ChecklistCard(shown(PanelIds.CHECKLIST)) } }
             AttachmentPanel(PanelIds.CHOICES) { PanelBox(PanelIds.CHOICES) { SignChoices(shown(PanelIds.CHOICES)) } }
         },
         update = { _, attachments ->
