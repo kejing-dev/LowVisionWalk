@@ -156,6 +156,9 @@ class WalkScene : LvStore.SceneHost {
     private var shoe: Entity? = null
     private var shoeParts: List<Entity> = emptyList()
     private var floorCatcher: Entity? = null
+    /** The floor marker (T17) and its see-through twin on the controller ray's floor hit while it is being put down. */
+    private var marker: Entity? = null
+    private var markerGhost: Entity? = null
     /** Where the door ghost stands now (T7); a pinch / trigger on the ghost marks the door there. */
     private var ghostAt: Placement? = null
 
@@ -414,6 +417,17 @@ class WalkScene : LvStore.SceneHost {
             }
         // door marking: the app's own virtual floor catcher, on only while marking (D24: no colliders on detected
         // planes; a wall is marked by pinching the door ghost that the controller ray puts on it)
+        // floor marker: a flat cross 0.5 m wide with a small square in the middle, not pickable (the floor catcher is)
+        fun markerShape(name: String, material: com.pico.spatial.core.ecs.resource.Material) =
+            Entity().named(name).also { m ->
+                root.addChild(m)
+                m.enabled = false
+                k.boxEntity(material, name).also { m.addChild(it); it.setLocal(position = Vec3(0f, 0.01f, 0f), scale = Vec3(0.5f, 0.012f, 0.04f)) }
+                k.boxEntity(material, name).also { m.addChild(it); it.setLocal(position = Vec3(0f, 0.01f, 0f), scale = Vec3(0.04f, 0.012f, 0.5f)) }
+                k.boxEntity(material, name).also { m.addChild(it); it.setLocal(position = Vec3(0f, 0.012f, 0f), scale = Vec3(0.12f, 0.016f, 0.12f)) }
+            }
+        marker = markerShape("marker", k.door)
+        markerGhost = markerShape("markerGhost", k.ghost)
         floorCatcher =
             Entity().named("floor").also {
                 it.components.set(CollisionComponent(collisionShape = listOf(ShapeResource.createBox(Vector3(16f, 0.02f, 16f))), physicsMaterial = PhysicsMaterialResource()))
@@ -460,7 +474,14 @@ class WalkScene : LvStore.SceneHost {
         applyVeil(w)
         applyObjects(w, next)
         applyPanels(w)
-        floorCatcher?.enabled = phase == WalkPhase.MARK_DOOR
+        floorCatcher?.enabled = phase == WalkPhase.MARK_DOOR || w?.placingMarker == true
+        // its top at the layout's floor (v0.1.3: it sat at Stage y = 0, so a pinch on a floor found 0.4 m up landed further away)
+        w?.layout?.let { floorCatcher?.setLocal(position = Vec3(0f, it.floorY - 0.01f, 0f)) }
+        val mk = w?.marker
+        val markerShown = mk != null && phase in setOf(WalkPhase.READY, WalkPhase.TASK, WalkPhase.RESULT, WalkPhase.CHALLENGE)
+        marker?.enabled = markerShown
+        if (mk != null) marker?.setLocal(position = mk)
+        if (w?.placingMarker != true) markerGhost?.enabled = false
     }
 
     private fun onPhase(from: WalkPhase?, to: WalkPhase?) {
@@ -674,7 +695,7 @@ class WalkScene : LvStore.SceneHost {
         when (w.phase) {
             WalkPhase.SCANNING -> stepScan(now)
             WalkPhase.MARK_DOOR -> stepGhost(w)
-            else -> Unit
+            else -> if (w.placingMarker) stepMarkerGhost(w)
         }
         if (w.veilVisible) safety.feed(now, head.position)?.let { LvStore.autoOff(it) } else safety.reset()
         if (w.phase == WalkPhase.CHALLENGE) stepChallenge(w)
@@ -740,6 +761,16 @@ class WalkScene : LvStore.SceneHost {
     }
 
     var debugGhostRay: ControllerInput.Ray? = null
+
+    /** T17: while the marker is being put down, its ghost follows the controller ray's hit on the floor (no head aiming). */
+    private fun stepMarkerGhost(w: WalkState) {
+        val g = markerGhost ?: return
+        val floorY = w.layout?.floorY ?: return
+        val ray = debugGhostRay ?: controller.ray()
+        val hit = ray?.let { rayHit(it, floorY) }?.takeIf { it.second == null }?.first
+        g.enabled = hit != null
+        if (hit != null) g.setLocal(position = Vec3(hit.x, floorY, hit.z))
+    }
 
     /** Nearest hit of a ray on a detected wall rectangle or the floor plane: point and wall normal (null on the floor). */
     private fun rayHit(ray: ControllerInput.Ray, floorY: Float): Pair<Vec3, Vec3?>? {
@@ -941,6 +972,11 @@ class WalkScene : LvStore.SceneHost {
         // the store, not the last rendered state: a move a moment ago may not have been rendered yet
         val w = LvStore.state.value.walk ?: return
         val l = w.layout
+        // putting the marker down (T17): the controller's trigger or a gaze pinch on the floor
+        if (w.placingMarker && w.phase != WalkPhase.MARK_DOOR) {
+            if (name == "floor" && stage != null && l != null) LvStore.markerPlaced(Vec3(stage.x, l.floorY, stage.z))
+            return
+        }
         when (w.phase) {
             WalkPhase.MARK_DOOR -> {
                 if (stage == null || l == null) return
@@ -1078,21 +1114,16 @@ class WalkScene : LvStore.SceneHost {
 
     override fun skipDoor(): Placement? {
         val l = state.walk?.layout ?: return null
-        return WalkRules.skipDoor(planes.all, head, l.floorY)
+        return WalkRules.skipDoor(l, head)
     }
 
-    /** 「移到面前」: in front of the current head (D9), out of the clearance (D14), facing the viewer. */
-    override fun bringHere(o: SceneObject): Placement? {
-        val l = state.walk?.layout ?: return null
-        val (ahead, y) =
-            when (o) {
-                SceneObject.TABLE -> WalkRules.TABLE_AHEAD_M to l.floorY + WalkRules.TABLE_H
-                SceneObject.SIGN -> WalkRules.SIGN_AHEAD_M to l.floorY + WalkRules.SIGN_CENTER_H
-                SceneObject.DOOR -> 2.5f to l.floorY
-            }
-        val at = WalkRules.clear(WalkRules.ahead(head, ahead, y), head.position, o.clearanceM)
-        val virtual = if (o == SceneObject.DOOR) l.door?.virtual ?: true else true
-        return Placement(at, WalkRules.yawTowards(at, head.position), virtual)
+    /** Debug `marker`: puts the marker down as a floor tap [dist] m ahead would (starts placing first, like the button). */
+    fun debugMarker(dist: Float): Boolean {
+        val w = LvStore.state.value.walk ?: return false
+        val l = w.layout ?: return false
+        if (!w.placingMarker) LvStore.markerClicked()
+        handleTap("floor", WalkRules.ahead(head, dist, l.floorY))
+        return LvStore.state.value.walk?.marker != null
     }
 
     // =========================================================================================

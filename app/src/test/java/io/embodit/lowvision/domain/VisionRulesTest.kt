@@ -104,17 +104,6 @@ class VisionRulesTest {
     }
 
     @Test
-    fun skipDoorKeepsDistanceFromWalls() {
-        val near = Surface(Surface.Kind.WALL, Vec3(0f, 1.3f, -1.8f), Vec3(0f, 0f, 1f), 2f, 1.3f, Vec3.RIGHT)
-        assertNull(WalkRules.skipDoor(listOf(near), ahead, 0f)) // 1.8 - 0.6 = 1.2 m < 1.5 m
-        val far = Surface(Surface.Kind.WALL, Vec3(0f, 1.3f, -3f), Vec3(0f, 0f, 1f), 2f, 1.3f, Vec3.RIGHT)
-        val p = WalkRules.skipDoor(listOf(far), ahead, 0f)
-        assertNotNull(p)
-        assertEquals(-2.4f, p!!.at.z, 1e-3f)
-        assertEquals(-3f, WalkRules.skipDoor(emptyList(), ahead, 0f)!!.at.z, 1e-3f)
-    }
-
-    @Test
     fun doorBeyondFourMetresIsRefused() {
         assertNull(WalkRules.markDoor(Vec3(0f, 0f, -4.5f), ahead, 0f, null))
         assertNotNull(WalkRules.markDoor(Vec3(0f, 0f, -3.5f), ahead, 0f, null))

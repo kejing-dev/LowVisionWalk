@@ -81,6 +81,7 @@ import io.embodit.lowvision.domain.Side
 import io.embodit.lowvision.domain.VeilMath
 import io.embodit.lowvision.domain.Vision
 import io.embodit.lowvision.platform.LvLog
+import io.embodit.lowvision.ui.theme.FitText
 import io.embodit.lowvision.ui.theme.LvColors
 import io.embodit.lowvision.ui.theme.LvType
 import io.embodit.lowvision.ui.walk.WALK_STAGE_ID
@@ -170,10 +171,19 @@ private fun StageBridge(windowId: String, windowTag: String?) {
                     LvStore.lensClosed("home destroyed")
                 }
             }
+        LvStore.spotHost =
+            object : LvStore.SpotHost {
+                override fun openSpot(gen: Int) = navigator.openWindowContainer(LENS_SPOT_ID, "spot$gen")
+
+                override fun closeSpot() {
+                    runCatching { navigator.closeWindowContainer(LENS_SPOT_ID) }.onFailure { LvLog.w("LENS spot close: $it") }
+                }
+            }
         lifecycleOwner.lifecycle.addObserver(observer)
         onDispose {
             lifecycleOwner.lifecycle.removeObserver(observer)
             LvStore.stageHost = null
+            LvStore.spotHost = null
         }
     }
 }
@@ -186,8 +196,8 @@ private fun StageBridge(windowId: String, windowTag: String?) {
 private fun TopBar(state: LvState, c: Copy) {
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
         Column(Modifier.weight(1f)) {
-            Text(c.title, style = LvType.title, color = PicoTheme.colorScheme.labelPrimary, maxLines = 1)
-            Text(c.subtitle, style = LvType.body, color = PicoTheme.colorScheme.labelPrimary, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            FitText(c.title, where = "home/c.title", style = LvType.title, color = PicoTheme.colorScheme.labelPrimary, maxLines = 1)
+            FitText(c.subtitle, where = "home/c.subtitle", style = LvType.body, color = PicoTheme.colorScheme.labelPrimary, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
         LabeledIcon(if (state.muted) R.drawable.ic_sound_off else R.drawable.ic_sound_on, if (state.muted) c.unmute else c.mute) { LvStore.muteClicked() }
         Spacer(Modifier.width(8.dp))
@@ -201,7 +211,7 @@ private fun LabeledIcon(icon: Int, label: String, onClick: () -> Unit) {
     Button(onClick = onClick, size = ButtonDefaults.Small, modifier = Modifier.height(48.dp), colors = ButtonDefaults.buttonColors(containerColor = PicoTheme.colorScheme.fillTertiary, contentColor = PicoTheme.colorScheme.labelPrimary)) {
         Icon(painter = painterResource(icon), contentDescription = null, modifier = Modifier.size(20.dp), tint = PicoTheme.colorScheme.labelPrimary)
         Spacer(Modifier.width(6.dp))
-        Text(label, maxLines = 1, softWrap = false)
+        FitText(label, where = "home/label", maxLines = 1, softWrap = false)
     }
 }
 
@@ -247,10 +257,10 @@ private fun DiseaseCards(state: LvState, c: Copy) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Icon(painter = painterResource(iconOf(d)), contentDescription = null, modifier = Modifier.size(32.dp), tint = colorOf(d))
                     Spacer(Modifier.width(10.dp))
-                    Text(c.name(d), style = LvType.cardName, color = PicoTheme.colorScheme.labelPrimary, maxLines = 2)
+                    FitText(c.name(d), where = "home/c.name", style = LvType.cardName, color = PicoTheme.colorScheme.labelPrimary, maxLines = 2)
                 }
                 Spacer(Modifier.height(8.dp))
-                Text(c.line(d), style = LvType.body, color = PicoTheme.colorScheme.labelPrimary, maxLines = if (state.selected == null) 3 else 2, overflow = TextOverflow.Ellipsis)
+                FitText(c.line(d), where = "home/c.line", style = LvType.body, color = PicoTheme.colorScheme.labelPrimary, maxLines = if (state.selected == null) 3 else 2, overflow = TextOverflow.Ellipsis)
             }
         }
     }
@@ -266,11 +276,11 @@ private fun Detail(v: Vision, c: Copy) {
         FieldDiagram(v, Modifier.size(220.dp).align(Alignment.CenterVertically))
         Spacer(Modifier.width(20.dp))
         Column(Modifier.weight(1f).fillMaxHeight()) {
-            Text(c.intro(v.disease), style = LvType.body, color = PicoTheme.colorScheme.labelPrimary, maxLines = 6, overflow = TextOverflow.Ellipsis)
+            FitText(c.intro(v.disease), where = "home/c.intro", style = LvType.body, color = PicoTheme.colorScheme.labelPrimary, maxLines = 6, overflow = TextOverflow.Ellipsis)
             Spacer(Modifier.weight(1f))
             SeverityControl(v, c)
             Spacer(Modifier.height(6.dp))
-            Text(if (v.disease == Disease.AMD) c.turnHead else c.notBlack, style = LvType.small, color = PicoTheme.colorScheme.labelPrimary, maxLines = 2)
+            FitText(if (v.disease == Disease.AMD) c.turnHead else c.notBlack, where = "home/if", style = LvType.small, color = PicoTheme.colorScheme.labelPrimary, maxLines = 2)
         }
     }
 }
@@ -285,7 +295,7 @@ private fun SeverityControl(v: Vision, c: Copy) {
     }
     Row(verticalAlignment = Alignment.CenterVertically) {
         Text(c.levelLabel, style = LvType.small, color = PicoTheme.colorScheme.labelPrimary, modifier = Modifier.weight(1f))
-        Text(c.degrees(v), style = LvType.cardName, color = PicoTheme.colorScheme.labelPrimary, maxLines = 1)
+        FitText(c.degrees(v), where = "home/c.degrees", style = LvType.cardName, color = PicoTheme.colorScheme.labelPrimary, maxLines = 1)
     }
     Slider(
         value = v.level.toFloat(),
@@ -323,7 +333,7 @@ fun SideSegment(side: Side, c: Copy, onSide: (Side) -> Unit) {
                         selectedItemBackgroundColor = PicoTheme.colorScheme.fillSecondary,
                         selectedItemContentColor = PicoTheme.colorScheme.labelPrimary,
                     ),
-                title = { Text(text = label, maxLines = 1, softWrap = false) },
+                title = { FitText(text = label, where = "home/label", maxLines = 1, softWrap = false) },
             )
         }
     }
@@ -380,7 +390,7 @@ private fun BottomButtons(state: LvState, c: Copy) {
         ) {
             Icon(painter = painterResource(R.drawable.ic_eye), contentDescription = null, modifier = Modifier.size(22.dp), tint = LvColors.OnAccent)
             Spacer(Modifier.width(8.dp))
-            Text(c.walk, maxLines = 1, color = LvColors.OnAccent)
+            FitText(c.walk, where = "home/c.walk", maxLines = 1, color = LvColors.OnAccent)
         }
         Button(
             onClick = { LvStore.lensClicked() },
@@ -389,8 +399,8 @@ private fun BottomButtons(state: LvState, c: Copy) {
             colors = ButtonDefaults.buttonColors(containerColor = PicoTheme.colorScheme.fillSecondary, contentColor = PicoTheme.colorScheme.labelPrimary),
         ) {
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                Text(c.lens, maxLines = 1)
-                Text(c.lensCameraNote, style = LvType.small, maxLines = 1)
+                FitText(c.lens, where = "home/c.lens", maxLines = 1)
+                FitText(c.lensCameraNote, where = "home/c.lensCameraNote", style = LvType.small, maxLines = 1)
             }
         }
     }
@@ -404,7 +414,7 @@ private fun InStageNote(c: Copy) {
         Button(onClick = { LvStore.homeClicked() }, colors = ButtonDefaults.buttonColors(containerColor = PicoTheme.colorScheme.fillSecondary, contentColor = PicoTheme.colorScheme.labelPrimary)) {
             Icon(painter = painterResource(R.drawable.ic_home), contentDescription = null, modifier = Modifier.size(20.dp), tint = PicoTheme.colorScheme.labelPrimary)
             Spacer(Modifier.width(8.dp))
-            Text(c.endWalk, maxLines = 1)
+            FitText(c.endWalk, where = "home/c.endWalk", maxLines = 1)
         }
     }
 }
@@ -442,7 +452,7 @@ private fun LensControls(state: LvState, v: Vision, c: Copy) {
                                 selectedItemBackgroundColor = PicoTheme.colorScheme.fillSecondary,
                                 selectedItemContentColor = PicoTheme.colorScheme.labelPrimary,
                             ),
-                        title = { Text(text = label, maxLines = 1, softWrap = false) },
+                        title = { FitText(text = label, where = "home/label", maxLines = 1, softWrap = false) },
                     )
                 }
             }
@@ -451,14 +461,14 @@ private fun LensControls(state: LvState, v: Vision, c: Copy) {
             Spacer(Modifier.height(8.dp))
             if (state.lens.source == LensSource.CAMERA) {
                 val line = if (state.isEmulator) c.lensNoCamera else if (now - state.lens.openedAtMs > 5_000) c.lensBlackHint else null
-                if (line != null) Text(line, style = LvType.body, color = PicoTheme.colorScheme.labelPrimary, maxLines = 2)
+                if (line != null) FitText(line, where = "home/line", style = LvType.body, color = PicoTheme.colorScheme.labelPrimary, maxLines = 2)
             }
-            Text(c.lensNote, style = LvType.small, color = PicoTheme.colorScheme.labelPrimary, maxLines = 2)
+            FitText(c.lensNote, where = "home/c.lensNote", style = LvType.small, color = PicoTheme.colorScheme.labelPrimary, maxLines = 2)
             Spacer(Modifier.weight(1f))
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 HoldButton(c.compare, Modifier.weight(1f)) { LvStore.lensCompare(it) }
                 Button(onClick = { LvStore.lensCloseClicked() }, modifier = Modifier.weight(1f).height(52.dp), colors = ButtonDefaults.buttonColors(containerColor = PicoTheme.colorScheme.fillSecondary, contentColor = PicoTheme.colorScheme.labelPrimary)) {
-                    Text(c.closeLens, maxLines = 1)
+                    FitText(c.closeLens, where = "home/c.closeLens", maxLines = 1)
                 }
             }
         }
@@ -485,7 +495,7 @@ fun HoldButton(label: String, modifier: Modifier, container: Color = PicoTheme.c
                 },
         contentAlignment = Alignment.Center,
     ) {
-        Text(label, style = PicoTheme.typography.labelLarge, color = content, maxLines = 1)
+        FitText(label, where = "home/label", style = PicoTheme.typography.labelLarge, color = content, maxLines = 1)
     }
 }
 
@@ -515,7 +525,7 @@ private fun SettingsCard(state: LvState, c: Copy, modifier: Modifier) {
                 Button(onClick = { LvStore.settingsOpen(false) }, size = ButtonDefaults.Small, modifier = Modifier.height(48.dp), colors = ButtonDefaults.buttonColors(containerColor = LvColors.PlateRaised, contentColor = LvColors.OnPlate)) {
                     Icon(painter = painterResource(R.drawable.ic_close), contentDescription = null, modifier = Modifier.size(18.dp), tint = LvColors.OnPlate)
                     Spacer(Modifier.width(6.dp))
-                    Text(c.close, color = LvColors.OnPlate, maxLines = 1)
+                    FitText(c.close, where = "home/c.close", color = LvColors.OnPlate, maxLines = 1)
                 }
             }
             Spacer(Modifier.height(14.dp))
@@ -537,7 +547,7 @@ private fun SettingsCard(state: LvState, c: Copy, modifier: Modifier) {
                                     selectedItemBackgroundColor = LvColors.Accent,
                                     selectedItemContentColor = LvColors.OnAccent,
                                 ),
-                            title = { Text(text = label, maxLines = 1, softWrap = false) },
+                            title = { FitText(text = label, where = "home/label", maxLines = 1, softWrap = false) },
                         )
                     }
                 }
@@ -570,17 +580,17 @@ private fun SettingsCard(state: LvState, c: Copy, modifier: Modifier) {
 private fun QuitRow(state: LvState, c: Copy) {
     if (!state.quitAsked) {
         Button(onClick = { LvStore.quitClicked() }, modifier = Modifier.fillMaxWidth().height(52.dp), colors = ButtonDefaults.buttonColors(containerColor = LvColors.PlateRaised, contentColor = LvColors.OnPlate)) {
-            Text(c.quitApp, color = LvColors.OnPlate, maxLines = 1)
+            FitText(c.quitApp, where = "home/c.quitApp", color = LvColors.OnPlate, maxLines = 1)
         }
         return
     }
     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-        Text(c.quitAsk, style = LvType.cardName, color = LvColors.OnPlate, modifier = Modifier.weight(1f), maxLines = 1)
+        FitText(c.quitAsk, where = "home/c.quitAsk", style = LvType.cardName, color = LvColors.OnPlate, modifier = Modifier.weight(1f), maxLines = 1)
         Button(onClick = { LvStore.quitCancelled() }, modifier = Modifier.width(112.dp).height(52.dp), colors = ButtonDefaults.buttonColors(containerColor = LvColors.PlateRaised, contentColor = LvColors.OnPlate)) {
-            Text(c.quitNo, color = LvColors.OnPlate, maxLines = 1)
+            FitText(c.quitNo, where = "home/c.quitNo", color = LvColors.OnPlate, maxLines = 1)
         }
         Button(onClick = { LvStore.quitConfirmed() }, modifier = Modifier.width(112.dp).height(52.dp), colors = ButtonDefaults.buttonColors(containerColor = LvColors.Danger, contentColor = LvColors.OnDanger)) {
-            Text(c.quitYes, color = LvColors.OnDanger, maxLines = 1)
+            FitText(c.quitYes, where = "home/c.quitYes", color = LvColors.OnDanger, maxLines = 1)
         }
     }
 }
@@ -595,7 +605,7 @@ private fun LensErrorCard(c: Copy, reason: String, modifier: Modifier) {
                 Text(c.lensUnavailable, style = LvType.cardName, color = LvColors.OnPlate)
             }
             Spacer(Modifier.height(8.dp))
-            Text(reason, style = LvType.small, color = LvColors.OnPlateDim, maxLines = 3)
+            FitText(reason, where = "home/reason", style = LvType.small, color = LvColors.OnPlateDim, maxLines = 3)
             Spacer(Modifier.height(14.dp))
             Button(onClick = { LvStore.lensErrorOk() }, modifier = Modifier.height(52.dp), colors = ButtonDefaults.buttonColors(containerColor = LvColors.Accent, contentColor = LvColors.OnAccent)) { Text(c.ok, color = LvColors.OnAccent) }
         }

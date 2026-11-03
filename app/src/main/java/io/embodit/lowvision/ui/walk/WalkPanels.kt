@@ -50,6 +50,7 @@ import io.embodit.lowvision.domain.PanelIds
 import io.embodit.lowvision.domain.PanelSpots
 import io.embodit.lowvision.ui.home.colorOf
 import io.embodit.lowvision.ui.home.iconOf
+import io.embodit.lowvision.ui.theme.FitText
 import io.embodit.lowvision.ui.theme.LvColors
 import io.embodit.lowvision.ui.theme.LvType
 import kotlinx.coroutines.delay
@@ -80,7 +81,7 @@ private fun PlateButton(label: String, modifier: Modifier = Modifier, primary: B
             Icon(painter = painterResource(icon), contentDescription = null, modifier = Modifier.size(20.dp), tint = ink)
             Spacer(Modifier.width(6.dp))
         }
-        Text(label, color = ink, maxLines = 1, softWrap = false)
+        FitText(label, where = "walk/label", color = ink, maxLines = 1, softWrap = false)
     }
 }
 
@@ -135,6 +136,7 @@ internal fun HintBar(state: LvState?) {
             HintKind.AUTO_OFF -> c.hintAutoOff
             HintKind.CHALLENGE -> c.hintChallenge
             HintKind.LOCKED -> c.hintTaskLocked
+            HintKind.PLACE_MARKER -> c.hintPlaceMarker
         }
     val alert = hint.kind in setOf(HintKind.WRONG_SALT, HintKind.WRONG_CASE, HintKind.NOT_VISIBLE, HintKind.SIGN_WRONG, HintKind.STEPPED, HintKind.TRACKING_LOST)
     Plate(padding = 14.dp) {
@@ -146,7 +148,7 @@ internal fun HintBar(state: LvState?) {
                 else -> Box(Modifier.size(14.dp).background(LvColors.Accent, CircleShape))
             }
             Spacer(Modifier.width(14.dp))
-            Text(text, style = LvType.body, color = LvColors.OnPlate, maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+            FitText(text, where = "walk/text", style = LvType.body, color = LvColors.OnPlate, maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
             if (hint.kind == HintKind.MARK_DOOR || hint.kind == HintKind.TOO_NEAR || hint.kind == HintKind.DOOR_FAR) {
                 Spacer(Modifier.width(10.dp))
                 PlateButton(c.skip) { LvStore.skipClicked() }
@@ -184,12 +186,12 @@ internal fun Pill(state: LvState?) {
         Row(Modifier.fillMaxSize(), verticalAlignment = Alignment.CenterVertically) {
             Icon(painter = painterResource(iconOf(w.vision.disease)), contentDescription = null, modifier = Modifier.size(26.dp), tint = colorOf(w.vision.disease))
             Spacer(Modifier.width(6.dp))
-            Text(levelMark(w.vision, c), style = LvType.small, color = LvColors.OnPlateDim, maxLines = 1)
+            FitText(levelMark(w.vision, c), where = "walk/levelMark", style = LvType.small, color = LvColors.OnPlateDim, maxLines = 1)
             Spacer(Modifier.width(10.dp))
             val run = w.run
             Column(Modifier.weight(1f)) {
-                Text(run?.let { r -> r.task?.let { c.taskName(it) } ?: c.challengeName } ?: c.shortName(w.vision.disease), style = LvType.small, color = LvColors.OnPlate, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                if (run != null) Text(Copy.clock(now - run.startMs), style = LvType.clock, color = LvColors.OnPlate, maxLines = 1)
+                FitText(run?.let { r -> r.task?.let { c.taskName(it) } ?: c.challengeName } ?: c.shortName(w.vision.disease), where = "walk/run", style = LvType.small, color = LvColors.OnPlate, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                if (run != null) FitText(Copy.clock(now - run.startMs), where = "walk/Copy.clock", style = LvType.clock, color = LvColors.OnPlate, maxLines = 1)
             }
             PlateButton(if (w.veilOn) c.takeOff else c.putOn, primary = !w.veilOn) { LvStore.takeOffClicked() }
             Spacer(Modifier.width(6.dp))
@@ -211,7 +213,7 @@ private fun CaptionButton(icon: Int, label: String, active: Boolean = false, onC
     Button(onClick = onClick, modifier = Modifier.size(width = 72.dp, height = 64.dp), colors = ButtonDefaults.buttonColors(containerColor = if (active) LvColors.Accent else LvColors.PlateRaised, contentColor = ink)) {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
             Icon(painter = painterResource(icon), contentDescription = null, modifier = Modifier.size(20.dp), tint = ink)
-            Text(label, style = LvType.tiny, color = ink, maxLines = 1, softWrap = false)
+            FitText(label, where = "walk/label", style = LvType.tiny, color = ink, maxLines = 1, softWrap = false)
         }
     }
 }
@@ -223,7 +225,7 @@ private fun CaptionButton(icon: Int, label: String, active: Boolean = false, onC
 @Composable
 private fun DragHint(c: Copy) {
     Row(Modifier.fillMaxWidth().height(30.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.Center) {
-        Text(c.dragHere, style = LvType.tiny, color = LvColors.OnPlateDim, maxLines = 1)
+        FitText(c.dragHere, where = "walk/c.dragHere", style = LvType.tiny, color = LvColors.OnPlateDim, maxLines = 1)
     }
 }
 
@@ -238,7 +240,7 @@ internal fun PillMenu(state: LvState?) {
     val v = w.vision
     Plate(padding = 16.dp) {
         Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            if (w.run != null) Text(c.menuNote, style = LvType.small, color = LvColors.OnPlateDim, maxLines = 2)
+            if (w.run != null) FitText(c.menuNote, where = "walk/c.menuNote", style = LvType.small, color = LvColors.OnPlateDim, maxLines = 2)
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 PlateButton(c.taskList, Modifier.weight(1f), icon = R.drawable.ic_list) { LvStore.menuTaskList() }
                 PlateButton(c.home, Modifier.weight(1f), icon = R.drawable.ic_home) { LvStore.homeClicked() }
@@ -255,7 +257,7 @@ internal fun PillMenu(state: LvState?) {
                     ) {
                         Icon(painter = painterResource(iconOf(d)), contentDescription = null, modifier = Modifier.size(20.dp), tint = if (sel) LvColors.OnAccent else colorOf(d))
                         Spacer(Modifier.width(4.dp))
-                        Text(c.shortName(d), maxLines = 1, softWrap = false, overflow = TextOverflow.Ellipsis, color = if (sel) LvColors.OnAccent else LvColors.OnPlate)
+                        FitText(c.shortName(d), where = "walk/c.shortName", maxLines = 1, softWrap = false, overflow = TextOverflow.Ellipsis, color = if (sel) LvColors.OnAccent else LvColors.OnPlate)
                     }
                 }
             }
@@ -268,7 +270,7 @@ internal fun PillMenu(state: LvState?) {
             } else {
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     PlateButton("−", Modifier.width(64.dp), enabled = v.level > 1) { LvStore.visionChanged(v.withLevel(v.level - 1)) }
-                    Text("${levelMark(v, c)}  ${c.degrees(v)}", style = LvType.body, color = LvColors.OnPlate, modifier = Modifier.weight(1f), maxLines = 1)
+                    FitText("${levelMark(v, c)}  ${c.degrees(v)}", where = "walk/levelMark", style = LvType.body, color = LvColors.OnPlate, modifier = Modifier.weight(1f), maxLines = 1)
                     PlateButton("+", Modifier.width(64.dp), enabled = v.level < Vision.LEVELS) { LvStore.visionChanged(v.withLevel(v.level + 1)) }
                 }
             }
@@ -297,16 +299,16 @@ internal fun TaskList(state: LvState?) {
             DragHint(c)
             Task.entries.forEach { t ->
                 val r = w.results[t]
-                Row(Modifier.fillMaxWidth().height(76.dp), verticalAlignment = Alignment.CenterVertically) {
+                Row(Modifier.fillMaxWidth().height(70.dp), verticalAlignment = Alignment.CenterVertically) {
                     Icon(painter = painterResource(taskIcon(t)), contentDescription = null, modifier = Modifier.size(30.dp), tint = LvColors.OnPlate)
                     Spacer(Modifier.width(12.dp))
                     Column(Modifier.weight(1f)) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text(c.taskName(t), style = LvType.cardName, color = LvColors.OnPlate, maxLines = 1)
+                            FitText(c.taskName(t), where = "walk/c.taskName", style = LvType.cardName, color = LvColors.OnPlate, maxLines = 1)
                             Spacer(Modifier.width(10.dp))
-                            Text(if (r != null) c.used(r.ms) else c.notDone, style = LvType.small, color = if (r != null) LvColors.Door else LvColors.OnPlateDim, maxLines = 1)
+                            FitText(if (r != null) c.used(r.ms) else c.notDone, where = "walk/if", style = LvType.small, color = if (r != null) LvColors.Door else LvColors.OnPlateDim, maxLines = 1)
                         }
-                        Text(c.taskHow(t), style = LvType.small, color = LvColors.OnPlateDim, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                        FitText(c.taskHow(t), where = "walk/c.taskHow", style = LvType.small, color = LvColors.OnPlateDim, maxLines = 2, overflow = TextOverflow.Ellipsis)
                     }
                     Spacer(Modifier.width(10.dp))
                     PlateButton(c.start, primary = r == null) { LvStore.startTask(t) }
@@ -315,20 +317,28 @@ internal fun TaskList(state: LvState?) {
             Spacer(Modifier.height(8.dp))
             PlateButton(c.seeChecklist, Modifier.fillMaxWidth(), primary = w.allMainDone, icon = R.drawable.ic_list) { LvStore.checklistClicked() }
             Spacer(Modifier.height(10.dp))
-            Text(c.sceneObjects, style = LvType.small, color = LvColors.OnPlateDim)
+            // the floor marker (T17, profile D1) shares the section's title row: put down with the controller ray or gaze + pinch, then 「移到标记处」
+            Row(Modifier.fillMaxWidth().height(52.dp), verticalAlignment = Alignment.CenterVertically) {
+                Text(c.sceneObjects, style = LvType.small, color = LvColors.OnPlateDim)
+                Spacer(Modifier.width(12.dp))
+                Box(Modifier.size(10.dp).background(if (w.marker != null) LvColors.Door else LvColors.PlateRaised, CircleShape))
+                Spacer(Modifier.width(6.dp))
+                FitText(if (w.placingMarker) c.markerPlacing else if (w.marker != null) c.markerDown else c.markerNone, where = "walk/marker", style = LvType.small, color = LvColors.OnPlate, modifier = Modifier.weight(1f), maxLines = 1)
+                SmallPlateButton(if (w.placingMarker) c.cancel else if (w.marker != null) c.moveMarker else c.placeMarker) { LvStore.markerClicked() }
+            }
             SceneObject.entries.forEach { o ->
                 val hidden = w.layout?.hidden?.contains(o) == true
                 val sel = w.selected == o
                 Row(Modifier.fillMaxWidth().height(52.dp), verticalAlignment = Alignment.CenterVertically) {
                     Box(Modifier.size(10.dp).background(if (sel) LvColors.Accent else LvColors.PlateRaised, CircleShape))
                     Spacer(Modifier.width(8.dp))
-                    Text(c.objectName(o), style = LvType.body, color = LvColors.OnPlate, modifier = Modifier.weight(1f), maxLines = 1)
+                    FitText(c.objectName(o), where = "walk/c.objectName", style = LvType.body, color = LvColors.OnPlate, modifier = Modifier.weight(1f), maxLines = 1)
                     SmallPlateButton(c.bringHere) { LvStore.bringHere(o) }
                     Spacer(Modifier.width(6.dp))
                     SmallPlateButton(if (hidden) c.show else c.hide) { LvStore.toggleHidden(o) }
                 }
             }
-            Text(c.stickHint, style = LvType.small, color = LvColors.OnPlateDim, maxLines = 1)
+            FitText(c.stickHint, where = "walk/c.stickHint", style = LvType.small, color = LvColors.OnPlateDim, maxLines = 1)
         }
     }
 }
@@ -336,7 +346,7 @@ internal fun TaskList(state: LvState?) {
 @Composable
 private fun SmallPlateButton(label: String, onClick: () -> Unit) {
     Button(onClick = onClick, size = ButtonDefaults.Small, modifier = Modifier.height(48.dp), colors = ButtonDefaults.buttonColors(containerColor = LvColors.PlateRaised, contentColor = LvColors.OnPlate)) {
-        Text(label, color = LvColors.OnPlate, maxLines = 1, softWrap = false)
+        FitText(label, where = "walk/label", color = LvColors.OnPlate, maxLines = 1, softWrap = false)
     }
 }
 
@@ -356,19 +366,23 @@ internal fun ResultCard(state: LvState?) {
                 Text(Copy.clock(r.ms), style = LvType.bigClock, color = LvColors.OnPlate)
                 Spacer(Modifier.width(14.dp))
                 Column {
-                    Text(r.task?.let { c.taskName(it) } ?: c.challengeDone, style = LvType.cardName, color = LvColors.OnPlate, maxLines = 1)
+                    FitText(r.task?.let { c.taskName(it) } ?: c.challengeDone, where = "walk/r.task", style = LvType.cardName, color = LvColors.OnPlate, maxLines = 1)
                     val best = if (r.newBest) c.best(r.ms) else r.best?.let { c.best(it) }
                     if (best != null) Text(best, style = LvType.small, color = LvColors.OnPlateDim)
                 }
             }
             Spacer(Modifier.height(8.dp))
-            Text(r.task?.let { c.insight(w.vision.disease, it) } ?: c.challengeInsight, style = LvType.body, color = LvColors.OnPlate, maxLines = 3, overflow = TextOverflow.Ellipsis)
+            FitText(r.task?.let { c.insight(w.vision.disease, it) } ?: c.challengeInsight, where = "walk/r.task", style = LvType.body, color = LvColors.OnPlate, maxLines = 3, overflow = TextOverflow.Ellipsis)
             Spacer(Modifier.height(6.dp))
             Text("${c.mistakes(r.task, r.mistakes)} · ${c.takeOffs(r.takeOffs)}", style = LvType.small, color = LvColors.OnPlateDim)
             Spacer(Modifier.weight(1f))
+            // the challenge on its own row (v0.1.3, QA #2 q2-4: 「Challenge: walk there」 was cut in a third of the row)
+            if (r.task == Task.DOOR && w.challenge == null) {
+                PlateButton(c.tryChallenge, Modifier.fillMaxWidth()) { LvStore.challengeClicked() }
+                Spacer(Modifier.height(8.dp))
+            }
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 HoldButton(c.peek, Modifier.weight(1f), container = LvColors.PlateRaised, content = LvColors.OnPlate) { LvStore.peek(it) }
-                if (r.task == Task.DOOR && w.challenge == null) PlateButton(c.tryChallenge, Modifier.weight(1.3f)) { LvStore.challengeClicked() }
                 PlateButton(c.next, Modifier.weight(1f), primary = true) { LvStore.nextClicked() }
             }
         }
@@ -397,8 +411,8 @@ internal fun ChecklistCard(state: LvState?) {
                     }
                     Spacer(Modifier.width(10.dp))
                     Column {
-                        Text(item.what, style = LvType.body, color = LvColors.OnPlate, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                        Text("— ${item.why}", style = LvType.small, color = LvColors.OnPlateDim, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        FitText(item.what, where = "walk/item.what", style = LvType.body, color = LvColors.OnPlate, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                        FitText("— ${item.why}", where = "walk/item.why", style = LvType.small, color = LvColors.OnPlateDim, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     }
                 }
             }
@@ -429,7 +443,7 @@ internal fun SignChoices(state: LvState?) {
                     modifier = Modifier.weight(1f).height(52.dp),
                     colors = ButtonDefaults.buttonColors(containerColor = if (wrong) LvColors.Danger else LvColors.PlateRaised, contentColor = if (wrong) LvColors.PlateInk else LvColors.OnPlate),
                 ) {
-                    Text(words.getOrElse(i) { "?" }, maxLines = 1, softWrap = false, overflow = TextOverflow.Ellipsis, color = if (wrong) LvColors.PlateInk else LvColors.OnPlate)
+                    FitText(words.getOrElse(i) { "?" }, where = "walk/words.getOrElse", maxLines = 1, softWrap = false, overflow = TextOverflow.Ellipsis, color = if (wrong) LvColors.PlateInk else LvColors.OnPlate)
                 }
             }
         }

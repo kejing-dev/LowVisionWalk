@@ -28,7 +28,7 @@ import kotlinx.coroutines.withTimeoutOrNull
 
 /**
  * The lens window (design P9 / E6): a SpatialML session in secure mode whose container (Shared Space only: SpatialML
- * containers are hidden in the Full Space) shows a 1.2 x 0.9 m panel; the panel's base colour texture is a dynamic
+ * containers are hidden in the Full Space) shows a 0.59 x 0.4425 m panel; the panel's base colour texture is a dynamic
  * texture the pipeline writes. Nothing is read back to the app, so no camera permission is needed.
  *
  * Graph (operator-only filter, host prototype tools/spatialml/lens_filter.py):
@@ -39,8 +39,14 @@ import kotlinx.coroutines.withTimeoutOrNull
  *   out = keep * (src + blurMix * (blur - src)) + greyW * grey + add      (masks: LensMasks, uploaded per vision)
  *   copy out -> RGB u8, convertColor RGB->RGBA into the dynamic texture.
  *
- * Camera: the frame pipeline is submitted every [FRAME_MS] (15 Hz), each run waiting for the last. Sample photos and
- * slider changes: one run after the masks are rewritten. All SpatialML calls run on the main thread scope, except the
+ * Camera: the frame pipeline is submitted every [FRAME_MS] (15 Hz), each run waiting for the last. Sample photos
+ * (v0.1.3, QA #2 q2-1): submitted every [PHOTO_MS] (4 Hz) as long as a photo is the source, also chained. Up to v0.1.2
+ * the photo was submitted once, without waiting for the init pipeline, and the panel stayed black for good: that run
+ * wrote the dynamic texture before the init pipeline had bound it to the panel, and a write from before the binding is
+ * never shown (emulator 2026-11-02: unchained single run black after 25 s; a second submit, or one run chained after
+ * the init task, shows at once). Now every run waits for the one before, the first for the init task ([initTask]), and
+ * the repeat keeps the picture up whatever the order (fed back to PICO, factory `feedback/pico-cli-feedback.md`).
+ * All SpatialML calls run on the main thread scope, except the
  * session's destroy (v0.1.2): on the emulator it never returned once a camera frame had been asked for (OpenMR
  * `endSession` binder call), which froze the app on 「关闭滤镜窗」 (ANR). It now runs on its own thread and the app does
  * not wait for it. Without a camera ([hasCamera] false, the emulator) the camera source draws nothing new: the window
@@ -65,6 +71,8 @@ class LensController(private val appContext: Context, private val hasCamera: Boo
     private var lastTask: Pipeline.RunTask? = null
     private var frames = 0L
     private var framesAtMs = 0L
+    private var initTask: Pipeline.RunTask? = null
+    private var photoLoop = false
 
     override fun open(source: LensSource, vision: Vision, compare: Boolean) {
         close()
@@ -106,6 +114,7 @@ class LensController(private val appContext: Context, private val hasCamera: Boo
         job?.cancel()
         job = null
         lastTask = null
+        initTask = null
         val s = session
         session = null
         scene = null
@@ -135,8 +144,9 @@ class LensController(private val appContext: Context, private val hasCamera: Boo
             true
         }
         if (ready != true) return null
-        // container 1200 x 900 x 100 (the panel glb is 1.2 x 0.9 m; unit to be confirmed on the device, design N5)
-        return inst.createSession(SpatialMLSession.InitInfo(LensMasks.W, LensMasks.H, 1200, 900, 100, SpatialMLSession.ContainerType.VOLUMETRIC))
+        // design N5, measured v0.1.3: a container unit is 0.4 mm (1200 x 900 came out 0.48 x 0.36 m in the system's window
+        // list), so 1500 x 1125 = 0.6 x 0.45 m holds the 0.59 x 0.4425 m panel glb (the 1.2 x 0.9 m one was clipped to its middle)
+        return inst.createSession(SpatialMLSession.InitInfo(LensMasks.W, LensMasks.H, CONTAINER_W, CONTAINER_H, CONTAINER_D, SpatialMLSession.ContainerType.VOLUMETRIC))
     }
 
     private suspend fun prepare(s: SpatialMLSession) {
@@ -154,8 +164,9 @@ class LensController(private val appContext: Context, private val hasCamera: Boo
             val texPh = newPlaceholderLike(t)
             updateSceneGraphProperty(scenePh, "/", SceneGraphProperty.PBRMaterials[0].BaseColorTexture, texPh)
             switchSceneVisibility(scenePh, newLocalTensor(1))
-            submit(mapOf(scenePh to sc, texPh to t), null, null)
+            initTask = submit(mapOf(scenePh to sc, texPh to t), null, null)
         }
+        lastTask = initTask
     }
 
     private suspend fun apply(source: LensSource, vision: Vision, compare: Boolean) {
@@ -182,15 +193,52 @@ class LensController(private val appContext: Context, private val hasCamera: Boo
             loop?.cancel()
             loop = null
             LvLog.i("LENS camera source without a camera: keeping the last picture")
-        } else if (source == LensSource.CAMERA) startCamera(s) else {
+        } else if (source == LensSource.CAMERA) startCamera(s) else startPhoto(s)
+    }
+
+    /** Sample photo: the same graph again every [PHOTO_MS] while a photo is the source (see the class comment). */
+    private fun startPhoto(s: SpatialMLSession) {
+        if (!repeatPhotos) {
             loop?.cancel()
             loop = null
             runOnce(s, camera = false)
+            return
         }
+        // masks and photo are global tensors rewritten in place: a running photo loop picks them up by itself
+        if (loop?.isActive == true && photoLoop) return
+        loop?.cancel()
+        photoLoop = true
+        loop =
+            scope.launch {
+                val pipeline = runCatching { framePipeline(s, camera = false) }.getOrElse {
+                    LvLog.e("LENS photo pipeline: $it", it)
+                    return@launch
+                }
+                var n = 0
+                var errors = 0
+                val t0 = SystemClock.elapsedRealtime()
+                while (isActive && session === s && source != LensSource.CAMERA) {
+                    val r = runCatching { pipeline.submit(lastTask) }
+                    if (r.isSuccess) {
+                        lastTask = r.getOrNull()
+                        errors = 0
+                        n++
+                        if (n == 2) LvLog.i("LENS picture up $photoName: 2 runs in ${SystemClock.elapsedRealtime() - t0} ms")
+                        if (n % 40 == 0) LvLog.i("LENS photo $photoName runs=$n")
+                    } else if (++errors >= 5) {
+                        LvLog.e("LENS photo stopped: ${r.exceptionOrNull()}")
+                        break
+                    }
+                    delay(PHOTO_MS)
+                }
+            }
+        LvLog.i("LENS run $photoName (every $PHOTO_MS ms)")
     }
 
     private fun startCamera(s: SpatialMLSession) {
-        if (loop?.isActive == true) return
+        if (loop?.isActive == true && !photoLoop) return
+        loop?.cancel()
+        photoLoop = false
         frames = 0
         framesAtMs = SystemClock.elapsedRealtime()
         loop =
@@ -200,6 +248,7 @@ class LensController(private val appContext: Context, private val hasCamera: Boo
                     return@launch
                 }
                 var errors = 0
+                var total = 0
                 while (isActive && session === s && source == LensSource.CAMERA) {
                     val t0 = SystemClock.elapsedRealtime()
                     val r = runCatching { pipeline.submit(lastTask) }
@@ -207,6 +256,7 @@ class LensController(private val appContext: Context, private val hasCamera: Boo
                         lastTask = r.getOrNull()
                         errors = 0
                         frames++
+                        if (++total == 2) LvLog.i("LENS picture up camera: 2 runs")
                     } else if (++errors >= 5) {
                         LvLog.e("LENS camera stopped: ${r.exceptionOrNull()}")
                         break
@@ -283,6 +333,13 @@ class LensController(private val appContext: Context, private val hasCamera: Boo
     companion object {
         private const val READY_TIMEOUT_MS = 8_000L
         private const val FRAME_MS = 66L
+        private const val PHOTO_MS = 250L
+        private const val CONTAINER_W = 1500
+        private const val CONTAINER_H = 1125
+        private const val CONTAINER_D = 100
+
+        /** Debug only (`lensRepeat 0`): one run per photo (chained after the init task), to compare with v0.1.2. */
+        @Volatile var repeatPhotos = true
 
         private fun rgb(h: Int, w: Int) = Tensor.MultiDimensionalInitInfo(Tensor.DataType.UINT8, intArrayOf(h, w), 3, false)
 

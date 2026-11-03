@@ -1,6 +1,10 @@
-"""Writes the lens window's assets (design E6): the 1.2 x 0.9 m panel glb and the three sample photos as raw RGB.
+"""Writes the lens window's assets (design E6): the 0.59 x 0.4425 m panel glb and the three sample photos as raw RGB.
 
-    python -I tools/spatialml/make_lens_assets.py <samples_dir>
+    python -I tools/spatialml/make_lens_assets.py [<samples_dir>]      (no samples_dir: the panel only)
+
+The panel must fit the SpatialML container (LensController: 1500 x 1125 units = 0.6 x 0.45 m, 0.4 mm per unit): up to
+v0.1.2 it was 1.2 x 0.9 m in a 1200 x 900 container (0.48 x 0.36 m), which clipped it to its middle 40 % (QA #2: the
+glaucoma edge never showed, the AMD patch looked 2.5 times too big).
 
 app/src/main/assets/lens/
   lens_panel.glb      one quad, front +Z, PBR material 0 with a base colour texture (replaced at run time by the
@@ -17,7 +21,7 @@ from PIL import Image
 
 ROOT = os.path.abspath(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", ".."))
 OUT = os.path.join(ROOT, "app", "src", "main", "assets", "lens")
-W_M, H_M = 1.2, 0.9
+W_M, H_M = 0.59, 0.4425
 
 
 def png_bytes():
@@ -85,9 +89,12 @@ def panel_glb(path):
 
 
 def main():
-    samples = sys.argv[1]
     os.makedirs(OUT, exist_ok=True)
     panel_glb(os.path.join(OUT, "lens_panel.glb"))
+    if len(sys.argv) < 2:
+        print("wrote", os.path.join(OUT, "lens_panel.glb"))
+        return
+    samples = sys.argv[1]
     for name in ("kitchen", "pills", "stairs"):
         im = Image.open(os.path.join(samples, name + ".png")).convert("RGB").resize((640, 480))
         with open(os.path.join(OUT, name + ".rgb"), "wb") as f:

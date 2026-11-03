@@ -16,6 +16,7 @@ import io.embodit.lowvision.domain.Task
 import io.embodit.lowvision.domain.Vec3
 import io.embodit.lowvision.domain.Vision
 import io.embodit.lowvision.platform.ControllerInput
+import io.embodit.lowvision.platform.LensController
 import io.embodit.lowvision.platform.LvLog
 import io.embodit.lowvision.ui.walk.ActiveScene
 
@@ -81,6 +82,8 @@ object DebugCommands {
                 LvStore.signChosen(if (arg == "wrong") w.signChoices.first { it != w.signWord } else w.signWord)
             }
             "lensSource" -> LvStore.lensSource(LensSource.of(arg ?: a["photo"]) ?: return false)
+            // compare: 0 = one run per photo (v0.1.2), 1 = the photo graph again every 250 ms (v0.1.3); takes effect on the next open
+            "lensRepeat" -> LensController.repeatPhotos = arg != "0"
             // D26: the same store events as the settings' buttons; no arg = 「退出应用」, confirm / cancel = the two answers
             "quit" ->
                 when (arg) {
@@ -92,6 +95,8 @@ object DebugCommands {
                     }
                 }
             "recall" -> scene()?.recallPanels() ?: return false
+            // T17: the floor marker as a trigger / pinch on the floor s metres ahead would put it (through handleTap)
+            "marker" -> return scene()?.debugMarker(arg?.toFloatOrNull() ?: 2f) ?: false
             // D21: a held grip bar under a card, hand travel in Stage metres (same begin / step / end as the real drag)
             "grip" -> return scene()?.debugGripDrag(arg ?: return false, Vec3(a["dx"]?.toFloatOrNull() ?: 0f, a["dy"]?.toFloatOrNull() ?: 0f, a["dz"]?.toFloatOrNull() ?: 0f)) ?: false
             "lost" -> {
@@ -235,7 +240,9 @@ object DebugCommands {
                 home()
                 select(v)
                 once { LvStore.lensClicked() }
-                once { LvStore.lensSource(if (up == "S21") LensSource.CAMERA else LensSource.of(a["photo"]) ?: LensSource.KITCHEN) }
+                // only a real change of source (v0.1.3: a second submit of the same photo had hidden q2-1's black window)
+                val want = if (up == "S21") LensSource.CAMERA else LensSource.of(a["photo"]) ?: LensSource.KITCHEN
+                once { if (LvStore.state.value.lens.source != want) LvStore.lensSource(want) }
                 if (up == "S22") once { LvStore.lensCompare(true) }
             }
             "S23" -> { home(); select(v); once { LvStore.lensFailed("debug: SpatialML ready timed out after 8 s") } }

@@ -76,8 +76,7 @@ object WalkRules {
     const val DOOR_W = 0.9f
     const val DOOR_H = 2.0f
     const val DOOR_MAX_M = 4f
-    const val DOOR_SKIP_MAX_M = 3f
-    const val DOOR_SKIP_MIN_M = 1.5f
+    const val DOOR_BEHIND_TABLE_M = 1.5f
     const val DOOR_REACHED_M = 0.7f
     const val SHOE_HIT_M = 0.3f
     const val FALLBACK_FLOOR_BELOW_HEAD = 1.6f
@@ -214,28 +213,31 @@ object WalkRules {
     fun slotOfItem(cupSlot: Int, item: Int): Int = (0 until 3).first { itemInSlot(cupSlot, it) == item }
 
     /**
-     * Skip the door marking (design S08 / safety.skipDoor): the frame stands min(3 m, nearest surface
-     * ahead − 0.6 m) along the head's horizontal heading; under 1.5 m skipping is refused (null).
-     * This is the design's fixed fallback spot, not aiming.
+     * Skip the door marking (design S08 / safety.skipDoor; v0.1.3, QA #2 q2-3 / profile D1): a virtual frame
+     * [DOOR_BEHIND_TABLE_M] behind the table, on the far side from where the viewer stood when the room was laid out
+     * (the table faces that spot), facing the viewer now. Up to v0.1.2 it was cast along the head's heading onto a wall,
+     * which is aiming with the head. Where the head looks now does not matter; the marker moves it anywhere.
      */
-    fun skipDoor(surfaces: Collection<Surface>, head: HeadPose, floorY: Float): Placement? {
-        val dir = headYawDir(head)
-        var nearest = Float.MAX_VALUE
-        for (s in surfaces) {
-            if (s.kind != Surface.Kind.WALL) continue
-            val n = s.normal
-            val denom = dir.dot(n)
-            if (abs(denom) < 1e-3f) continue
-            val t = (s.center - head.position).dot(n) / denom
-            if (t <= 0f) continue
-            val hit = head.position + dir * t
-            val rel = hit - s.center
-            if (abs(rel.dot(s.axisU)) <= s.halfU + 0.05f) nearest = minOf(nearest, t)
-        }
-        val d = minOf(DOOR_SKIP_MAX_M, nearest - 0.6f)
-        if (d < DOOR_SKIP_MIN_M) return null
-        val at = ahead(head, d, floorY)
+    fun skipDoor(layout: WalkLayout, head: HeadPose): Placement {
+        val away = -dirOf(layout.table.yaw)
+        val base = Vec3(layout.table.at.x + away.x * DOOR_BEHIND_TABLE_M, layout.floorY, layout.table.at.z + away.z * DOOR_BEHIND_TABLE_M)
+        val at = clear(base, head.position, SceneObject.DOOR.clearanceM)
         return Placement(at, yawTowards(at, head.position), virtual = true)
+    }
+
+    /**
+     * 「移到标记处」 (T17, v0.1.3, profile D1): [o] goes onto the floor marker the user put down with the controller ray or
+     * gaze + pinch, at its working height, out of the head clearance (D14), turned to face the viewer about the vertical.
+     */
+    fun toMarker(o: SceneObject, marker: Vec3, floorY: Float, head: HeadPose, virtual: Boolean): Placement {
+        val y =
+            when (o) {
+                SceneObject.TABLE -> floorY + TABLE_H
+                SceneObject.SIGN -> floorY + SIGN_CENTER_H
+                SceneObject.DOOR -> floorY
+            }
+        val at = clear(Vec3(marker.x, y, marker.z), head.position, o.clearanceM)
+        return Placement(at, yawTowards(at, head.position), virtual)
     }
 
     /** A marked door: on the floor below the picked point, facing the viewer; null beyond 4 m. */

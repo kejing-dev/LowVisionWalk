@@ -35,11 +35,11 @@ val PanelSpots =
         PanelIds.SAFETY to PanelSpot(0.9f, 11f, 520f, 440f),
         PanelIds.HINT to PanelSpot(0.9f, -16f, 600f, 96f, follows = true),
         PanelIds.PILL to PanelSpot(0.8f, 30f, 580f, 88f, follows = true),
-        PanelIds.MENU to PanelSpot(0.8f, 12f, 400f, 410f),
+        PanelIds.MENU to PanelSpot(0.8f, 12f, 520f, 410f), // v0.1.3 q2-4: 400 cut 「黄斑变性」 / Glaucoma / Hemianopia
         PanelIds.TASKS to PanelSpot(0.9f, 14f, 560f, 600f),
-        PanelIds.RESULT to PanelSpot(0.9f, 10f, 500f, 360f),
+        PanelIds.RESULT to PanelSpot(0.9f, 10f, 500f, 420f), // v0.1.3 q2-4: the challenge button has its own row
         PanelIds.CHECKLIST to PanelSpot(0.9f, 16f, 600f, 680f),
-        PanelIds.CHOICES to PanelSpot(0.8f, 22f, 440f, 76f, follows = true),
+        PanelIds.CHOICES to PanelSpot(0.8f, 22f, 600f, 76f, follows = true), // v0.1.3: 440 cut "TWICE DAILY" (D13 tour)
     )
 
 /** A panel's place in Stage metres and its turn about the vertical (+Z of the panel towards the viewer). No pitch, no roll. */

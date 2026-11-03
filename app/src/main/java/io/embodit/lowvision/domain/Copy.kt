@@ -128,8 +128,9 @@ class Copy(val lang: Lang) {
 
     // ---- hint bar (P6)
     val hintScanning = t("看看四周，我来找地面、桌子和墙（最多 5 秒）", "Look around — finding the floor, a table and walls (5 s at most)")
-    val hintMarkDoor = t("看向你家的门（或任何一个出口），捏一下标记；手柄指着它扣扳机", "Look at a door (or any way out) and pinch to mark it; or point the controller and pull the trigger")
-    val skip = t("跳过，用前方的位置", "Skip, use the spot ahead")
+    val hintMarkDoor = t("看向你家的门（或任何一个出口），捏一下标记；手柄指着它扣扳机", "Look at a door or way out and pinch, or point the controller and pull the trigger")
+    val skip = t("跳过", "Skip")
+    val cancel = t("取消", "Cancel")
     val hintTooNear = t("前面太近，请标一个出口", "Too close ahead — please mark a way out")
     val hintDoorFar = t("选近一点的出口（4 米以内）", "Pick a closer way out (within 4 m)")
 
@@ -186,7 +187,13 @@ class Copy(val lang: Lang) {
     val sceneObjects = t("场景物体", "Scene objects")
     val stickHint = t("↔ 手柄摇杆左右：转动选中的物体", "↔ Thumbstick left / right: turn the selected object")
     val dragHint = t("任务外可以捏住或扣住扳机拖动物体", "Outside a task, pinch or hold the trigger to drag an object")
-    val bringHere = t("移到面前", "Bring here")
+    val bringHere = t("移到标记处", "To marker")
+    val placeMarker = t("放标记", "Place marker")
+    val moveMarker = t("重放标记", "Move marker")
+    val markerNone = t("地上还没有标记", "No marker on the floor")
+    val markerDown = t("标记已放好", "Marker is down")
+    val markerPlacing = t("正在放标记…", "Placing the marker…")
+    val hintPlaceMarker = t("手柄指着地面扣扳机，或看着地面捏合，放下标记", "Point at the floor and pull the trigger, or look there and pinch")
     val hide = t("隐藏", "Hide")
     val show = t("显示", "Show")
 

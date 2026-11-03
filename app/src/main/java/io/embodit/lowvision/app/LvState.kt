@@ -3,6 +3,7 @@ package io.embodit.lowvision.app
 import io.embodit.lowvision.domain.Lang
 import io.embodit.lowvision.domain.SceneObject
 import io.embodit.lowvision.domain.Task
+import io.embodit.lowvision.domain.Vec3
 import io.embodit.lowvision.domain.Vision
 import io.embodit.lowvision.domain.WalkLayout
 
@@ -36,6 +37,7 @@ enum class HintKind {
     AUTO_OFF,
     CHALLENGE,
     LOCKED,
+    PLACE_MARKER,
 }
 
 data class Hint(val kind: HintKind, val untilMs: Long? = null)
@@ -65,6 +67,9 @@ data class WalkState(
     val signChoices: List<Int> = emptyList(),
     val wrongChoice: Int? = null,
     val selected: SceneObject = SceneObject.TABLE,
+    /** The floor marker (T17, profile D1): put down by controller ray + trigger or gaze + pinch; 「移到标记处」 uses it. */
+    val marker: Vec3? = null,
+    val placingMarker: Boolean = false,
     val autoOffAtMs: Long = 0L,
     val trackingLost: Boolean = false,
     val misses: Map<String, Int> = emptyMap(),

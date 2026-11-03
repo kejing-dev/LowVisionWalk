@@ -1,6 +1,6 @@
 # Low Vision Walk（低视力体验）
 
-PICO OS 6 spatial app (v0.1.2), Kotlin, PICO Spatial SDK 6.1.9 (BOM), package `io.embodit.lowvision`. Factory app
+PICO OS 6 spatial app (v0.1.3), Kotlin, PICO Spatial SDK 6.1.9 (BOM), package `io.embodit.lowvision`. Factory app
 `low-vision`, skeleton D. Design package (binding):
 `C:\Users\Admin\Downloads\spatial-app-factory\apps\low-vision\design-package.json` (states S01–S28, panels P1–P10,
 entities E1–E6, interactions T1–T18). Built from Life-size Creatures / Spatial Ruler pieces (window + secondary Mixed
@@ -77,9 +77,11 @@ for the scan and marking the door 2.5 m ahead on the way).
 | `lost --es s 1\|0` | hold / release tracking lost (S27) |
 | `stick --es s 0.8,1500` | thumbstick X for ms: turns the selected scene object |
 | `ghost --es s 2.5` / `ghost --es s off` | door ghost as if a controller ray hit the floor 2.5 m ahead (S08) |
-| `bring --es s table\|sign\|door` / `hide --es s …` | the task card's scene-object rows |
+| `marker --es s 2.0` | the floor marker put down as a trigger / pinch on the floor 2.0 m ahead would (starts placing first, same `handleTap` path) |
+| `bring --es s table\|sign\|door` / `hide --es s …` | the task card's scene-object rows (「移到标记处」: onto the marker; without one it starts placing it) |
 | `testtex --es s 1\|0` | 「F↑」 orientation test texture on the veil |
-| `lang --es s zh\|en` `mute` `lensSource --es s kitchen\|camera` | |
+| `lang --es s zh\|en` `mute` `lensSource --es s kitchen\|pills\|stairs\|camera` | |
+| `lensRepeat --es s 0\|1` | 0 = one filter run per photo (chained after the init pipeline), 1 = every 250 ms (default); next open |
 | `quit` / `quit --es s confirm\|cancel` | settings' 「退出应用」 (opens settings + the confirm) / the two answers (D26; confirm ends the app) |
 | `grip --es s tasks\|result\|checklist\|safety\|menu --ef dx 0.2 --ef dy 0 --ef dz 0` | a card's grip bar held and moved by (dx, dy, dz) m (same begin / step / end as the spatial drag) |
 | `recall` | the pill's 「叫回」: every shown card back in front |
@@ -110,19 +112,41 @@ The veil is a large transparent surface: shoot each state twice and keep the sec
 - D24: no colliders on detected planes. Marking the door on a wall = pinch the door ghost the controller ray puts there;
   the floor catcher (app-owned virtual floor) is on only while marking. See factory `apps/low-vision/build/reality-audit.md`.
 
-## Lens window (P9, S20–S22, S28) — v0.1.1 / v0.1.2
+## Lens window (P9, S20–S22, S28) — v0.1.3
 
 - SpatialML secure session (`platform/LensController.kt`), operator-only filter (blur / contrast / fade / patch masks from
-  `domain/LensMasks.kt`). Emulator: opens with the kitchen sample photo, the masks render (seen: glaucoma tunnel, hemianopia
-  half); the system puts the SpatialML container in front of the home window (no placement API). The camera source on the
-  emulator only shows 「没有摄像头画面」: v0.1.2 does not run the camera pipeline without a camera, because a session that
-  had asked for camera frames never finished destroying (app ANR + OpenMR service ANR, see factory
-  `feedback/pico-cli-feedback.md`). The session is destroyed on its own thread. Real camera: headset only.
+  `domain/LensMasks.kt`). Container 1500 × 1125 × 100 units = 0.6 × 0.45 m (1 unit = 0.4 mm, measured); the panel glb
+  (`tools/spatialml/make_lens_assets.py`) is 0.59 × 0.4425 m. v0.1.2's 1.2 × 0.9 m panel in a 0.48 × 0.36 m container
+  showed only the middle 40 % of the picture.
+- Placement (QA #2 q2-2): the system puts the container in the middle of the window that has focus when the session is
+  created, 5.7 cm in front of it, and raises a window over it when the window gets focus. So 「透过滤镜看」 first opens the
+  lens spot window (`ui/home/LensSpot.kt`, `WindowContainer("LensSpot", placement = Placement.right(home))`, a new tag
+  per open) and creates the session once that window is focused (`LvStore.lensSpotReady`, 3 s fallback). The container
+  stands beside the home window; all lens controls stay in the home window. Closing the lens closes the spot window;
+  closing the spot window from its bar closes the lens.
+- Frames (QA #2 q2-1): every pipeline run waits for the one before, the first for the init pipeline (which binds the
+  dynamic texture to the panel). v0.1.2 submitted the photo once without waiting, the write came before the binding and
+  the window stayed black. Photos now run every 250 ms (`LENS picture up <photo>: 2 runs in … ms`), the camera at 15 Hz
+  (`LENS picture up camera`, `LENS camera … Hz`).
+- Emulator: the camera source only shows 「没有摄像头画面」 (no camera pipeline without a camera: a session that asked for
+  camera frames never finished destroying, see factory `feedback/pico-cli-feedback.md`). Real camera: headset only.
+
+## Floor marker (T17, v0.1.3, QA #2 q2-3 / profile D1)
+
+The task card's scene-object section starts with the marker row: 「放标记」 → the app's floor catcher comes on, a ghost
+cross follows the controller ray's floor hit; the trigger (or a gaze pinch) on the floor puts the green marker down
+(`MARKER at=…`). 「移到标记处」 on a row moves that object onto the marker (table / sign at working height, out of the head
+clearance, turned to the viewer); without a marker it starts placing one. 「跳过」 while marking the door puts a virtual door
+1.5 m behind the table (scan-time layout), not along the head's heading. Tests: `MarkerPlacementTest` (four sides, three
+head headings). Nothing is placed along the head's heading any more except the first layout at scan time (D9).
+
+## Text overflow (D13, v0.1.3)
+
+Every text with a fixed number of lines is `ui/theme/FitText` and logs `OVERFLOW <where> lines=<n> "<text>"` (tag
+`LowVision`, level W) when cut or ellipsised. A tour of all states in zh and en should log none.
 
 ## Not built yet / device only
 
 - Lens window with the real camera (S21): look, frame rate (`LENS camera … Hz`), filter strength.
-- 「移到面前」 and 「跳过」 (door) still place 3D objects along the head's heading; the 2026-10-28 D1 gate wants a marker
-  placed by ray / gaze instead (not done in v0.1.2).
 - Device only: veil lag on fast head turns (N1), plane detection quality / TABLE labels (N3), auto take-off thresholds
   (N10), B / Y on the real controller (N9), walking feel.

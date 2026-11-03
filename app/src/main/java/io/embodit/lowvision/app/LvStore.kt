@@ -17,6 +17,7 @@ import io.embodit.lowvision.domain.Placement
 import io.embodit.lowvision.domain.SceneObject
 import io.embodit.lowvision.domain.Side
 import io.embodit.lowvision.domain.Task
+import io.embodit.lowvision.domain.Vec3
 import io.embodit.lowvision.domain.Vision
 import io.embodit.lowvision.domain.WalkLayout
 import io.embodit.lowvision.domain.WalkRules
@@ -45,9 +46,6 @@ object LvStore {
         fun head(): HeadPose?
 
         fun skipDoor(): Placement?
-
-        /** Re-runs placement from the current surfaces and head (a new walk after 「换一种病再走」 keeps the layout). */
-        fun bringHere(o: SceneObject): Placement?
     }
 
     enum class Sound {
@@ -71,6 +69,26 @@ object LvStore {
     var soundHost: ((Sound) -> Unit)? = null
     var lensHost: LensHost? = null
 
+    /**
+     * Opens / closes the lens spot window beside the home window (v0.1.3, QA #2 q2-2). The system puts the SpatialML
+     * container in the middle of whichever window is focused when the session is created, 5 cm in front of it, and has no
+     * placement parameter: in front of the home window it covered the controls, and a press on the home window raised the
+     * window over it. So the session is created only once the spot window (to the right of the home window) is focused.
+     */
+    var spotHost: SpotHost? = null
+
+    interface SpotHost {
+        /** [gen] goes into the window's tag, so every open is a new window (a closing one is never reused). */
+        fun openSpot(gen: Int)
+
+        fun closeSpot()
+    }
+
+    private var lensWaitingForSpot = false
+
+    /** Which spot window is the current one: a spot window closed just before the next open reports with an older number. */
+    @Volatile var spotGen = 0
+        private set
 
     /** Lens window side (SpatialML); null while the lens is not built in. */
     interface LensHost {
@@ -509,14 +527,42 @@ object LvStore {
         LvLog.i("OBJECT ${o.id} at=${LvLog.pos(p.at)} yaw=${"%.0f".format(Math.toDegrees(p.yaw.toDouble()))}")
     }
 
+    /** 「移到标记处」 (T17, profile D1): onto the floor marker; without one, this starts putting the marker down. */
     fun bringHere(o: SceneObject) {
         val w = s.walk ?: return
         if (w.run != null) {
             showHint(Hint(HintKind.LOCKED, now() + 2_000), restore = null)
             return
         }
-        val p = sceneHost?.bringHere(o) ?: return
-        walk("bring ${o.id}") { it.copy(layout = it.layout?.with(o, p)?.let { l -> l.copy(hidden = l.hidden - o) }, selected = o) }
+        val l = w.layout ?: return
+        val marker = w.marker
+        val head = sceneHost?.head()
+        if (marker == null || head == null) {
+            if (!w.placingMarker) markerClicked()
+            return
+        }
+        val virtual = l.of(o)?.virtual ?: true
+        val p = WalkRules.toMarker(o, marker, l.floorY, head, virtual)
+        LvLog.i("OBJECT ${o.id} to marker ${LvLog.pos(marker)} -> ${LvLog.pos(p.at)}")
+        walk("bring ${o.id}") { it.copy(layout = it.layout?.with(o, p)?.let { ll -> ll.copy(hidden = ll.hidden - o) }, selected = o) }
+    }
+
+    /** 「放标记」 / 「重放标记」: the floor catcher comes on and the controller ray shows a ghost marker; again = cancel. */
+    fun markerClicked() {
+        val w = s.walk ?: return
+        if (w.placingMarker) {
+            walk("marker cancelled") { it.copy(placingMarker = false, hint = if (it.hint?.kind == HintKind.PLACE_MARKER) null else it.hint) }
+            return
+        }
+        walk("placing marker") { it.copy(placingMarker = true, hint = Hint(HintKind.PLACE_MARKER)) }
+    }
+
+    /** A trigger / pinch on the floor while placing: the marker is down there (and stays until it is put down again). */
+    fun markerPlaced(at: Vec3) {
+        val w = s.walk ?: return
+        if (!w.placingMarker) return
+        LvLog.i("MARKER at=${LvLog.pos(at)}")
+        walk("marker placed") { it.copy(marker = at, placingMarker = false, hint = if (it.hint?.kind == HintKind.PLACE_MARKER) null else it.hint) }
     }
 
     fun toggleHidden(o: SceneObject) {
@@ -551,8 +597,32 @@ object LvStore {
             return
         }
         set(s.copy(lens = LensState(open = true, source = source, openedAtMs = now()), settingsOpen = false), "lens open")
-        host.open(source, v, false)
+        val spot = spotHost
+        if (spot == null) {
+            host.open(source, v, false)
+            return
+        }
+        lensWaitingForSpot = true
+        spot.openSpot(++spotGen)
+        // the spot window reports focus within ~1 s; without it the lens still opens (where the system puts it)
+        main.postDelayed({ lensSpotReady("no focus after $SPOT_WAIT_MS ms") }, SPOT_WAIT_MS)
     }
+
+    /** The spot window is focused (or the wait is over): now the session, so its container lands in front of the spot. */
+    fun lensSpotReady(why: String) {
+        if (!lensWaitingForSpot || !s.lens.open) return
+        lensWaitingForSpot = false
+        val v = s.selected ?: return
+        LvLog.i("LENS spot ready ($why)")
+        lensHost?.open(s.lens.source, v, s.lens.comparing)
+    }
+
+    /** The spot window went away (closed by the app, or by the user from its window bar). */
+    fun lensSpotGone(gen: Int) {
+        if (gen == spotGen && s.lens.open) lensClosed("spot window closed")
+    }
+
+    private const val SPOT_WAIT_MS = 3_000L
 
     fun lensSource(source: LensSource) {
         val v = s.selected ?: return
@@ -572,14 +642,18 @@ object LvStore {
 
     fun lensClosed(why: String) {
         if (!s.lens.open) return
+        lensWaitingForSpot = false
         lensHost?.close()
         set(s.copy(lens = LensState(source = s.lens.source)), "lens closed $why")
+        spotHost?.closeSpot()
     }
 
     fun lensFailed(reason: String) {
         LvLog.w("LENS failed $reason")
+        lensWaitingForSpot = false
         lensHost?.close()
         set(s.copy(lens = LensState(error = reason)), "lens failed")
+        spotHost?.closeSpot()
     }
 
     fun lensErrorOk() = set(s.copy(lens = LensState()), "lens error ok")
