@@ -1,6 +1,6 @@
 # Low Vision Walk（低视力体验）
 
-PICO OS 6 spatial app (v0.1.4), Kotlin, PICO Spatial SDK 6.1.9 (BOM), package `io.embodit.lowvision`. Factory app
+PICO OS 6 spatial app (v0.1.5), Kotlin, PICO Spatial SDK 6.1.9 (BOM), package `io.embodit.lowvision`. Factory app
 `low-vision`, skeleton D. Design package (binding):
 `C:\Users\Admin\Downloads\spatial-app-factory\apps\low-vision\design-package.json` (states S01–S28, panels P1–P10,
 entities E1–E6, interactions T1–T18). Built from Life-size Creatures / Spatial Ruler pieces (window + secondary Mixed
@@ -34,6 +34,8 @@ app/src/main/java/io/embodit/lowvision/
                          choices), PanelRig (ported pool), SceneKit (materials, unit quad)
 app/src/debug/           DebugCommandReceiver + DebugCommands (debug builds only)
 tools/                   dev.sh, make_icons.py (vector drawables + 512 px icon), subset_cjk_font.py, harness/
+                         make_props.py (Tripo GLBs -> assets/props + domain/PropModels.kt), d9_level_gate.sh,
+                         props_views.sh (v0.1.5 evidence runs)
 ```
 
 Data flows one way: window taps / Stage gestures / tracker events → `LvStore` → `LvState` → window recomposes,
@@ -99,6 +101,23 @@ Walk (send `seed --ei n 7` first): S06, S07, S08 (+ `ghost 2.5`), S19 (emulator 
 S09, S10 (amd level 3 + `aim --es target cup --ef offsetDeg 6`: mug half under the patch), S10w, S10v, S11, S12, S13,
 S12d, S14 (hemi left: door on the blind side), S16, S14c, S15, S16c, S17, S18, S24, S26, S27.
 The veil is a large transparent surface: shoot each state twice and keep the second.
+
+## v0.1.5 (QA #3)
+
+- **Home window only opens with a level head** (q3-1, profile D9, factory `native-window-move.md` §7 item 9): a Planar
+  window opens square to the line of sight and cannot be tilted afterwards. Every reopen during the walk (task done,
+  menu / settings, the pill's 「叫回」, leaving the walk) asks `LvStore.openWhenLevel`; `WalkScene.onFrame` feeds the head
+  pitch to `domain/LevelGate` (|pitch| ≤ 10° for 300 ms; no head 5 s / no Stage frames 15 s → opens anyway). Meanwhile
+  the hint strip sits 6° above the line of sight: 「抬头平视，面板马上回来」/「平视前方，…」/ "Look straight ahead, the
+  panel is coming". Log `LEVEL ask|wait|ok|cancel`, `WINDOW wanted=… life=… hidden=…`. Not gated: the reopen after the
+  system closed the Stage (no HMD pose outside Full Space).
+- **Props are Tripo models** (q3-2, profile B12 / D25 / D24): table, mug, salt shaker, glasses case, sign plaque, sign
+  stand, shoe in `app/src/main/assets/props/*.glb`, made in the user's Tripo account (task ids in `domain/PropModels.kt`),
+  calibrated and forced opaque by `tools/make_props.py` (raw files in `../low-vision-assets/raw/`). `WalkScene.propSlot`
+  puts a clone in a calibration node; `PropCalibration` re-checks the measured box at run time (log `MODEL check …
+  calib=file`). The clone's root IS the file's `calib:` node: never reset its transform, and measure it relative to the
+  calibration node. Pick colliders are the old invisible boxes; only abstract indicators (door dashes, floor marker) use
+  `SceneKit.indicatorBar`. Stepping on the shoe shows a red floor patch under it (the shoe model stays).
 
 ## Panels (v0.1.2 – v0.1.4, profile D8 / D9 / D21 / B19)
 

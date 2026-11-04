@@ -88,17 +88,12 @@ internal class SharedResources {
  * their exact value (Spatial Ruler: colours arrive dull with tone mapping on).
  */
 internal class SceneKit(private val shared: SharedResources) {
-    val mug: Material = unlit(LvColors.Mug)
-    val salt: Material = unlit(LvColors.Salt)
-    val case: Material = unlit(LvColors.GlassesCase)
-    val wood: Material = unlit(LvColors.TableWood)
-    val stand: Material = unlit(LvColors.Stand)
-    val shoe: Material = unlit(LvColors.Shoe)
+    // v0.1.5 (q3-2): table, items, sign and shoe are Tripo models (WalkScene.propSlot) with their own materials
     val shoeHit: Material = unlit(LvColors.Danger)
     val door: Material = unlit(LvColors.Door, twoSided = true)
     val ghost: Material = sheer(LvColors.Door, 0.35f)
 
-    /** Unit box (1 m cube), scaled per use: table, items, sign board, door dashes, shoe. Created lazily ([warmUp]). */
+    /** Unit box (1 m cube), scaled per use: door dashes and the floor marker only. Created lazily ([warmUp]). */
     val box: MeshResource
         get() = MeshCache.box
 
@@ -109,8 +104,8 @@ internal class SceneKit(private val shared: SharedResources) {
     /**
      * Mesh creation blocks the main thread until the render service answers: seconds on a loaded emulator, and an
      * input-dispatch ANR when one call passes 5 s while a focus event waits (v0.1.0 builds 5, 11, 17). The scene
-     * therefore uses two meshes only (box, quad), each created in its own main-thread message ([warmUp]) and once per process ([MeshCache]); round
-     * things (mug, salt shaker, pole) are boxes.
+     * therefore uses two meshes only (box, quad), each created in its own main-thread message ([warmUp]) and once per process ([MeshCache]); the props
+     * (v0.1.5) are Tripo GLBs loaded one after the other by the scene.
      */
     fun warmUp(step: Int): Boolean = MeshCache.warmUp(step)
 
@@ -146,7 +141,11 @@ internal class SceneKit(private val shared: SharedResources) {
             }
         )
 
-    fun boxEntity(material: Material, name: String): Entity = ModelEntity(box, material).named(name)
+    /**
+     * A bar of an abstract indicator (profile B12: geometry only for invisible colliders, floor marks and abstract
+     * indicators): the door's dashed frame and the floor marker cross. Scene props are Tripo models, never this.
+     */
+    fun indicatorBar(material: Material, name: String): Entity = ModelEntity(box, material).named(name)
 
     fun quadEntity(material: Material, name: String): Entity = ModelEntity(quad, material).named(name)
 }

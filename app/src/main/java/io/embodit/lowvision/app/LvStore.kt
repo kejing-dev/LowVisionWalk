@@ -13,6 +13,7 @@ import android.os.SystemClock
 import io.embodit.lowvision.domain.Disease
 import io.embodit.lowvision.domain.HeadPose
 import io.embodit.lowvision.domain.Lang
+import io.embodit.lowvision.domain.LevelGate
 import io.embodit.lowvision.domain.Placement
 import io.embodit.lowvision.domain.SceneObject
 import io.embodit.lowvision.domain.Side
@@ -211,6 +212,82 @@ object LvStore {
         walk("window recall") { it.copy(window = WindowAsk.RECALLED) }
         if (homeLife.value != "ON_DESTROY" && homeLife.value != "never") homeRecall.value++
     }
+
+    // ---- v0.1.5 (QA #3 q3-1, profile D9): the home window opens again only while the head is level
+
+    /** The Stage feeds it every frame ([stepWindowGate]); every reopen during the walk asks through [openWhenLevel]. */
+    private val windowGate = LevelGate()
+    private var windowOpen: (() -> Unit)? = null
+    private var gateLastStepMs = 0L
+    private var gateLastLogMs = 0L
+
+    /** Runs [open] once the head has been level for a moment (or the Stage gives no head / no frames for a while). */
+    fun openWhenLevel(why: String, open: () -> Unit) {
+        val now = SystemClock.elapsedRealtime()
+        windowGate.ask(why, now)
+        windowOpen = open
+        gateLastStepMs = 0L
+        LvLog.i("LEVEL ask why=$why")
+        main.removeCallbacks(gateWatchdog)
+        main.postDelayed(gateWatchdog, GATE_WATCHDOG_MS)
+    }
+
+    /** Drops a waiting reopen (the Stage is going; its own dispose path takes over). */
+    fun cancelWindowGate(why: String, onlyIf: String? = null) {
+        if (!windowGate.waiting) return
+        if (onlyIf != null && windowGate.pending?.startsWith(onlyIf) != true) return
+        LvLog.i("LEVEL cancel pending=${windowGate.pending} ($why)")
+        windowGate.cancel()
+        windowOpen = null
+        main.removeCallbacks(gateWatchdog)
+        setLevelHint(0)
+    }
+
+    val windowGateWaiting: Boolean
+        get() = windowGate.waiting
+
+    /** Per Stage frame: [pitchDeg] of the head (+ up), null without a valid head pose. */
+    fun stepWindowGate(now: Long, pitchDeg: Float?) {
+        if (!windowGate.waiting) return
+        gateLastStepMs = now
+        setLevelHint(windowGate.hint(pitchDeg))
+        if (now - gateLastLogMs > 1_000) {
+            gateLastLogMs = now
+            LvLog.i("LEVEL wait pitch=${pitchDeg?.let { "%.1f".format(it) }} hint=${s.levelHint} waited=${windowGate.waitedMs(now)}")
+        }
+        windowGate.step(now, pitchDeg)?.let { fireWindowOpen(it, pitchDeg) }
+    }
+
+    private fun fireWindowOpen(why: String, pitchDeg: Float?) {
+        LvLog.i("LEVEL ok pitch=${pitchDeg?.let { "%.1f".format(it) }} -> open why=$why")
+        main.removeCallbacks(gateWatchdog)
+        setLevelHint(0)
+        val open = windowOpen
+        windowOpen = null
+        open?.invoke()
+    }
+
+    private fun setLevelHint(hint: Int) {
+        if (s.levelHint != hint) set(s.copy(levelHint = hint), "level hint $hint")
+    }
+
+    /** No Stage frames: the window is not held back for ever (15 s before the first frame, 3 s after the last one). */
+    private val gateWatchdog =
+        object : Runnable {
+            override fun run() {
+                if (!windowGate.waiting) return
+                val now = SystemClock.elapsedRealtime()
+                val stalled = if (gateLastStepMs == 0L) windowGate.waitedMs(now) > GATE_NO_FRAMES_FIRST_MS else now - gateLastStepMs > GATE_WATCHDOG_MS
+                if (stalled) {
+                    val why = windowGate.pending ?: return
+                    windowGate.cancel()
+                    fireWindowOpen("$why/noframes", null)
+                } else main.postDelayed(this, GATE_WATCHDOG_MS)
+            }
+        }
+
+    private const val GATE_WATCHDOG_MS = 3_000L
+    private const val GATE_NO_FRAMES_FIRST_MS = 15_000L
 
     /** The user closed the home window with the system window bar's × during the walk: it stays closed for this step. */
     fun windowDismissed() {

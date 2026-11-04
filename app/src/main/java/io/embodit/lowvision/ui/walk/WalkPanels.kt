@@ -184,8 +184,19 @@ private fun SafetyCard(state: LvState?) {
 @Composable
 internal fun HintBar(state: LvState?) {
     val w = state?.walk ?: return
-    val hint = w.hint ?: return
     val c = Copy(state.lang)
+    if (state.levelHint != 0) {
+        // v0.1.5 (q3-1): the home window waits for a level head; this strip sits on the line of sight meanwhile
+        Plate(padding = 14.dp) {
+            Row(Modifier.fillMaxSize(), verticalAlignment = Alignment.CenterVertically) {
+                Box(Modifier.size(14.dp).background(LvColors.Accent, CircleShape))
+                Spacer(Modifier.width(14.dp))
+                FitText(if (state.levelHint < 0) c.hintLevelUp else c.hintLevelDown, where = "walk/level", style = LvType.body, color = LvColors.OnPlate, maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+            }
+        }
+        return
+    }
+    val hint = w.hint ?: return
     val text = hintText(hint.kind, w, c)
     val alert = hint.kind in setOf(HintKind.WRONG_SALT, HintKind.WRONG_CASE, HintKind.NOT_VISIBLE, HintKind.SIGN_WRONG, HintKind.STEPPED, HintKind.TRACKING_LOST)
     Plate(padding = 14.dp) {

@@ -40,10 +40,14 @@ import io.embodit.lowvision.app.WalkPhase
 import io.embodit.lowvision.app.WalkState
 import io.embodit.lowvision.domain.Copy
 import io.embodit.lowvision.domain.HeadPose
+import io.embodit.lowvision.domain.LevelGate
 import io.embodit.lowvision.domain.PanelIds
 import io.embodit.lowvision.domain.PanelPlace
 import io.embodit.lowvision.domain.PanelSpot
 import io.embodit.lowvision.domain.PanelSpots
+import io.embodit.lowvision.domain.Box3
+import io.embodit.lowvision.domain.PropCalibration
+import io.embodit.lowvision.domain.PropModel
 import io.embodit.lowvision.domain.Placement
 import io.embodit.lowvision.domain.Quat4
 import io.embodit.lowvision.domain.SafetyMonitor
@@ -123,6 +127,7 @@ class WalkScene : LvStore.SceneHost {
 
     private var head = HeadPose(Vec3.ZERO, Quat4.IDENTITY)
     private var hasHead = false
+    private var headPitch: Float? = null
     private var frames = 0L
     private var lastLogMs = 0L
     private var lastFrameMs = 0L
@@ -146,8 +151,6 @@ class WalkScene : LvStore.SceneHost {
     private val items = arrayOfNulls<Entity>(3)
     private var sign: Entity? = null
     private var signStand: Entity? = null
-    private var standPole: Entity? = null
-    private var standFoot: Entity? = null
     private var signFace: Entity? = null
     private var signFaceKey: String? = null
     private var signMaterials = HashMap<String, UnlitMaterial>()
@@ -210,6 +213,7 @@ class WalkScene : LvStore.SceneHost {
         k.warmUp(0)
         buildVeil(root, res)
         main.postDelayed({ if (stageRoot === root) k.warmUp(1) }, BOX_WARMUP_MS)
+        main.postDelayed({ if (stageRoot === root) loadProps(root) }, PROPS_LOAD_DELAY_MS)
         // the objects wait a moment: mesh creation blocks the main thread, and the Stage's first frames and
         // panels come first (ANR on the emulator when everything was built inside attach)
         objectsPending = root to k
@@ -257,6 +261,9 @@ class WalkScene : LvStore.SceneHost {
         runCatching { contentProbe?.destroy(true) }
         veilTextures.clear()
         signMaterials.clear()
+        propTemplates.clear()
+        propSlots.clear()
+        shelf = null
         shared?.close()
         stageRoot = null
         contentProbe = null
@@ -317,40 +324,33 @@ class WalkScene : LvStore.SceneHost {
         }
         // table: origin at the centre of the top surface; +Z faces the viewer at placing time
         val t = Entity().named("table").also { root.addChild(it); it.enabled = false }
+        // v0.1.5 (QA #3 q3-2, profile B12 / D25): every visible prop is a Tripo model in a calibration node ([propSlot]);
+        // only the pick colliders below are boxes, and they are invisible
         tableMesh =
             Entity().named("table").also { mesh ->
                 t.addChild(mesh)
-                val top = k.boxEntity(k.wood, "table").also { mesh.addChild(it) }
-                top.setLocal(position = Vec3(0f, -0.02f, 0f), scale = Vec3(WalkRules.TABLE_W, 0.04f, WalkRules.TABLE_D))
-                for ((sx, sz) in listOf(-1f to -1f, 1f to -1f, -1f to 1f, 1f to 1f)) {
-                    val leg = k.boxEntity(k.wood, "table")
-                    mesh.addChild(leg)
-                    leg.setLocal(position = Vec3(sx * (WalkRules.TABLE_W / 2f - 0.05f), -WalkRules.TABLE_H / 2f, sz * (WalkRules.TABLE_D / 2f - 0.05f)), scale = Vec3(0.04f, WalkRules.TABLE_H - 0.04f, 0.04f))
-                }
+                propSlot(PropModel.TABLE, mesh, "table")
                 pickable(mesh, Vector3(WalkRules.TABLE_W, WalkRules.TABLE_H, WalkRules.TABLE_D), Vector3(0f, -WalkRules.TABLE_H / 2f, 0f))
             }
         // the three items; their pick boxes are 1.5 x the model (design T8), and no hover effect (R1-4)
         items[0] =
             Entity().named("item:0").also { mug ->
                 t.addChild(mug)
-                k.boxEntity(k.mug, "item:0").also { mug.addChild(it); it.setLocal(position = Vec3(0f, 0.0475f, 0f), scale = Vec3(0.08f, 0.095f, 0.08f)) }
-                // the handle: a "C" of three bars on the +X side
-                k.boxEntity(k.mug, "item:0").also { mug.addChild(it); it.setLocal(position = Vec3(0.062f, 0.05f, 0f), scale = Vec3(0.012f, 0.055f, 0.014f)) }
-                k.boxEntity(k.mug, "item:0").also { mug.addChild(it); it.setLocal(position = Vec3(0.05f, 0.0775f, 0f), scale = Vec3(0.03f, 0.012f, 0.014f)) }
-                k.boxEntity(k.mug, "item:0").also { mug.addChild(it); it.setLocal(position = Vec3(0.05f, 0.0225f, 0f), scale = Vec3(0.03f, 0.012f, 0.014f)) }
+                // the handle on the +X side
+                propSlot(PropModel.MUG, mug, "item:0")
                 pickable(mug, Vector3(0.16f, 0.15f, 0.12f), Vector3(0.01f, 0.0475f, 0f))
             }
         items[1] =
             Entity().named("item:1").also { s ->
                 t.addChild(s)
-                k.boxEntity(k.salt, "item:1").also { s.addChild(it); it.setLocal(position = Vec3(0f, 0.045f, 0f), scale = Vec3(0.04f, 0.09f, 0.04f)) }
+                propSlot(PropModel.SALT, s, "item:1")
                 pickable(s, Vector3(0.06f, 0.135f, 0.06f), Vector3(0f, 0.045f, 0f))
             }
         items[2] =
             Entity().named("item:2").also { c ->
                 t.addChild(c)
-                k.boxEntity(k.case, "item:2").also { c.addChild(it); it.setLocal(position = Vec3(0f, 0.02f, 0f), scale = Vec3(0.16f, 0.04f, 0.06f)) }
-                pickable(c, Vector3(0.24f, 0.06f, 0.09f), Vector3(0f, 0.02f, 0f))
+                propSlot(PropModel.GLASSES_CASE, c, "item:2")
+                pickable(c, Vector3(0.24f, 0.07f, 0.105f), Vector3(0f, 0.0225f, 0f))
             }
         table = t
         // sign: origin at the centre of the board; +Z out of the wall
@@ -358,13 +358,14 @@ class WalkScene : LvStore.SceneHost {
             Entity().named("sign").also { s ->
                 root.addChild(s)
                 s.enabled = false
-                k.boxEntity(k.stand, "sign").also { s.addChild(it); it.setLocal(position = Vec3(0f, 0f, -0.006f), scale = Vec3(WalkRules.SIGN_W + 0.02f, WalkRules.SIGN_H + 0.02f, 0.01f)) }
+                // the plaque's front face at z = -0.001, the word quad ([updateSignFace]) just in front of it
+                propSlot(PropModel.SIGN_PLAQUE, s, "sign")
                 pickable(s, Vector3(WalkRules.SIGN_W + 0.1f, WalkRules.SIGN_H + 0.1f, 0.06f))
+                // a virtual sign stands on a floor stand; its height follows the board (render: only this parent is scaled)
                 signStand =
                     Entity().named("sign").also { st ->
                         s.addChild(st)
-                        standPole = k.boxEntity(k.stand, "sign").also { st.addChild(it) }
-                        standFoot = k.boxEntity(k.stand, "sign").also { st.addChild(it) }
+                        propSlot(PropModel.SIGN_STAND, st, "sign")
                     }
             }
         // door frame: origin on the floor at the middle of the threshold; +Z towards the room
@@ -388,18 +389,21 @@ class WalkScene : LvStore.SceneHost {
                     hit.components.set(InteractableComponent())
                 }
             }
-        // shoe of the challenge: two boxes, 28 x 10 x 10 cm; a red twin shows once it is stepped on (S15)
+        // shoe of the challenge: a Tripo sneaker, 28 cm, toe on +Z (towards the door); once it is stepped on (S15) a red
+        // patch shows on the floor under it (an abstract indicator, profile B12)
         shoe =
             Entity().named("shoe").also { s ->
                 root.addChild(s)
                 s.enabled = false
-                fun parts(material: com.pico.spatial.core.ecs.resource.Material) =
-                    Entity().also { g ->
-                        s.addChild(g)
-                        k.boxEntity(material, "shoe").also { g.addChild(it); it.setLocal(position = Vec3(0f, 0.03f, 0f), scale = Vec3(0.10f, 0.06f, 0.28f)) }
-                        k.boxEntity(material, "shoe").also { g.addChild(it); it.setLocal(position = Vec3(0f, 0.08f, 0.07f), scale = Vec3(0.09f, 0.05f, 0.12f)) }
+                val model = Entity().also { s.addChild(it) }
+                propSlot(PropModel.SHOE, model, "shoe")
+                val hit =
+                    k.quadEntity(k.shoeHit, "shoe").also {
+                        s.addChild(it)
+                        it.setLocal(position = Vec3(0f, 0.004f, 0f), rotation = Quat4.axisAngle(Vec3.RIGHT, -(Math.PI / 2).toFloat()), scale = Vec3(0.24f, 0.40f, 1f))
+                        it.enabled = false
                     }
-                shoeParts = listOf(parts(k.shoe), parts(k.shoeHit).also { it.enabled = false })
+                shoeParts = listOf(model, hit)
             }
         // door marking: the app's own virtual floor catcher, on only while marking (D24: no colliders on detected
         // planes; a wall is marked by pinching the door ghost that the controller ray puts on it)
@@ -408,9 +412,9 @@ class WalkScene : LvStore.SceneHost {
             Entity().named(name).also { m ->
                 root.addChild(m)
                 m.enabled = false
-                k.boxEntity(material, name).also { m.addChild(it); it.setLocal(position = Vec3(0f, 0.01f, 0f), scale = Vec3(0.5f, 0.012f, 0.04f)) }
-                k.boxEntity(material, name).also { m.addChild(it); it.setLocal(position = Vec3(0f, 0.01f, 0f), scale = Vec3(0.04f, 0.012f, 0.5f)) }
-                k.boxEntity(material, name).also { m.addChild(it); it.setLocal(position = Vec3(0f, 0.012f, 0f), scale = Vec3(0.12f, 0.016f, 0.12f)) }
+                k.indicatorBar(material, name).also { m.addChild(it); it.setLocal(position = Vec3(0f, 0.01f, 0f), scale = Vec3(0.5f, 0.012f, 0.04f)) }
+                k.indicatorBar(material, name).also { m.addChild(it); it.setLocal(position = Vec3(0f, 0.01f, 0f), scale = Vec3(0.04f, 0.012f, 0.5f)) }
+                k.indicatorBar(material, name).also { m.addChild(it); it.setLocal(position = Vec3(0f, 0.012f, 0f), scale = Vec3(0.12f, 0.016f, 0.12f)) }
             }
         marker = markerShape("marker", k.door)
         markerGhost = markerShape("markerGhost", k.ghost)
@@ -423,13 +427,87 @@ class WalkScene : LvStore.SceneHost {
             }
     }
 
+    // =========================================================================================
+    // props (v0.1.5, QA #3 q3-2): Tripo models, one calibration node each (profile D25), opaque (D24)
+    // =========================================================================================
+
+    /** One loaded model per prop, kept disabled on [shelf]; the scene shows clones. */
+    private val propTemplates = HashMap<PropModel, Entity>()
+
+    /** Calibration nodes and the prop each one shows (filled when the model is there). */
+    private val propSlots = ArrayList<Triple<PropModel, Entity, Entity>>()
+    private var shelf: Entity? = null
+
+    /** A calibration node under [parent] for [prop]: the clone goes in now, or as soon as the model has loaded. */
+    private fun propSlot(prop: PropModel, parent: Entity, name: String): Entity {
+        val cal = Entity().named(name)
+        parent.addChild(cal)
+        propSlots += Triple(prop, cal, parent)
+        fillSlot(prop, cal, parent)
+        return cal
+    }
+
+    private fun fillSlot(prop: PropModel, cal: Entity, parent: Entity) {
+        val template = propTemplates[prop] ?: return
+        if (runCatching { cal.getChildren().isNotEmpty() }.getOrDefault(false)) return
+        val name = runCatching { cal.getName() }.getOrNull() ?: prop.name
+        val c = runCatching { template.clone(Entity.CloneOptions(recursive = true, shouldShareMaterialInstance = true)) }.onFailure { LvLog.e("MODEL ${prop.asset} clone failed: $it", it) }.getOrNull() ?: return
+        cal.addChild(c.named(name))
+        c.enabled = true
+        // the clone's own transform is the file's calibration root (`calib:<name>`, make_props.py): never reset it
+        // D25: the file is not trusted; measure the clone, calibrate this node, measure again
+        // in the calibration node's space (still identity here): the clone's own transform is included; relative to the
+        // clone itself it would not be (that is the raw file's box)
+        val measured = boxOf(c, cal)
+        val cb = PropCalibration.calibrate(measured, prop)
+        cal.setLocal(position = cb.offset, rotation = cb.rotation, scale = cb.scale)
+        val after = boxOf(c, parent) ?: cb.apply(measured ?: prop.box)
+        val opacity = c.components[com.pico.spatial.core.ecs.OpacityControllerComponent::class.java] != null
+        LvLog.i(
+            "MODEL check instance=$name file=${prop.asset} calib=${cb.why} measured=${measured?.let { LvLog.pos(it.min) + ".." + LvLog.pos(it.max) }} min=${LvLog.pos(after.min)} max=${LvLog.pos(after.max)} " +
+                "size=${LvLog.pos(after.size)} opacityComponent=${if (opacity) "yes" else "none"} tris=${prop.triangles}",
+        )
+    }
+
+    private fun boxOf(e: Entity, relativeTo: Entity): Box3? =
+        runCatching { e.getVisualBounds(relativeTo) }.getOrNull()?.let {
+            val c = it.center.domain()
+            val h = it.halfExtent.domain()
+            Box3(c - h, c + h)
+        }?.takeIf { !it.isEmpty }
+
+    /** Loads the props one after the other (each a main-thread upload of ~9k triangles), then fills the waiting slots. */
+    private fun loadProps(root: Entity) {
+        val sh = Entity().named("propShelf")
+        root.addChild(sh)
+        sh.enabled = false
+        shelf = sh
+        scope.launch {
+            for (prop in PropModel.entries) {
+                if (stageRoot !== root) return@launch
+                val t0 = SystemClock.elapsedRealtime()
+                val e = runCatching { Entity.loadSuspend("asset://${prop.asset}") }.onFailure { LvLog.e("MODEL ${prop.asset} load failed: $it", it) }.getOrNull() ?: continue
+                if (stageRoot !== root) {
+                    runCatching { e.destroy(true) }
+                    return@launch
+                }
+                sh.addChild(e.named("template:${prop.name}"))
+                propTemplates[prop] = e
+                LvLog.i("MODEL ${prop.asset} loaded in ${SystemClock.elapsedRealtime() - t0} ms")
+                for ((p, cal, parent) in propSlots) if (p == prop) fillSlot(p, cal, parent)
+                kotlinx.coroutines.delay(PROP_GAP_MS)
+            }
+            LvLog.i("MODEL props ready ${propTemplates.size}/${PropModel.entries.size}")
+        }
+    }
+
     /** Green dashed frame 0.9 x 2.0 m: two posts and a lintel cut into dashes. */
     private fun buildDoorFrame(parent: Entity, k: SceneKit, material: com.pico.spatial.core.ecs.resource.Material) {
         val stroke = 0.035f
         val dash = 0.16f
         val gap = 0.09f
         val name = runCatching { parent.getName() }.getOrNull() ?: "door"
-        fun bar(x: Float, y: Float, sx: Float, sy: Float) = k.boxEntity(material, name).also { parent.addChild(it); it.setLocal(position = Vec3(x, y, 0f), scale = Vec3(sx, sy, stroke)) }
+        fun bar(x: Float, y: Float, sx: Float, sy: Float) = k.indicatorBar(material, name).also { parent.addChild(it); it.setLocal(position = Vec3(x, y, 0f), scale = Vec3(sx, sy, stroke)) }
         for (side in listOf(-1f, 1f)) {
             var y = 0f
             while (y < WalkRules.DOOR_H) {
@@ -572,9 +650,11 @@ class WalkScene : LvStore.SceneHost {
                 sg.setLocal(position = live.at, rotation = Quat4.axisAngle(Vec3.UP, live.yaw))
                 val standH = (live.at.y - l.floorY).coerceAtLeast(0.2f)
                 signStand?.enabled = l.sign.virtual
-                // pole from the floor to the board's lower edge, a flat foot on the floor
-                standPole?.setLocal(position = Vec3(0f, -(standH + WalkRules.SIGN_H / 2f) / 2f, -0.02f), scale = Vec3(0.03f, standH - WalkRules.SIGN_H / 2f, 0.03f))
-                standFoot?.setLocal(position = Vec3(0f, -standH, -0.02f), scale = Vec3(0.3f, 0.02f, 0.3f))
+                // the stand (calibrated 1 m tall, base on its origin) from the floor to the board's top edge; its mounting
+                // plate sits just behind the plaque. Only this parent is scaled, the calibration node stays as it is (D25).
+                val k = STAND_FOOT_M / PropModel.SIGN_STAND.box.size.x
+                val behind = -(PROP_PLAQUE_BACK_M + PropModel.SIGN_STAND.topFrontZ * k + 0.003f)
+                signStand?.setLocal(position = Vec3(0f, -standH, behind), scale = Vec3(k, standH + WalkRules.SIGN_H / 2f + 0.01f, k))
                 updateSignFace(w, s)
             }
         }
@@ -645,7 +725,8 @@ class WalkScene : LvStore.SceneHost {
             if (on && !slot.shown) slot.show() else if (!on) slot.hide()
         }
         val p = w?.phase
-        want(PanelIds.HINT, w?.hint != null && p != WalkPhase.SAFETY)
+        // v0.1.5 (q3-1): the level hint uses the same strip while the home window waits for a level head
+        want(PanelIds.HINT, (w?.hint != null && p != WalkPhase.SAFETY) || state.levelHint != 0)
         want(PanelIds.PILL, p in WalkState.VEIL_PHASES)
         want(PanelIds.CHOICES, p == WalkPhase.TASK && w.run?.task == Task.SIGN && !w.menuOpen)
     }
@@ -667,6 +748,9 @@ class WalkScene : LvStore.SceneHost {
                 hasHead = true
             }
         }
+        // v0.1.5 (q3-1): a waiting home window opens once the head is level (pitch from this frame's pose only)
+        headPitch = LevelGate.pitchDeg(if (hasHead) head else null)
+        LvStore.stepWindowGate(now, headPitch)
         val rig = rig ?: return
         rig.onFrame(now)
         rig.stowBehind(head)
@@ -784,7 +868,6 @@ class WalkScene : LvStore.SceneHost {
         val shoeAt = l.shoe
         if (shoeAt != null && !steppedOnce && WalkRules.horizontal(h, shoeAt) < WalkRules.SHOE_HIT_M) {
             steppedOnce = true
-            shoeParts.getOrNull(0)?.enabled = false
             shoeParts.getOrNull(1)?.enabled = true
             LvLog.i("CHALLENGE stepped at=${LvLog.pos(h)}")
             LvStore.stepped()
@@ -853,8 +936,12 @@ class WalkScene : LvStore.SceneHost {
         for ((id, spot) in PanelSpots) {
             val slot = rig[id] ?: continue
             if (!slot.shown) continue
-            val at = PanelPlace.placeUpright(head, spot, if (spot.follows) heading else headingNow).position
-            if (abs(slot.scaleX - spot.distM) > 0.01f) slot.show(at = at, kx = spot.distM, ky = spot.distM) else slot.moveTo(at)
+            // v0.1.5 (q3-1): the level hint goes on the line of sight (clamped ±40°), still upright and turned by yaw only
+            val pitch = headPitch
+            val level = id == PanelIds.HINT && state.levelHint != 0 && pitch != null
+            val sp = if (level) LevelGate.hintSpot(pitch!!, spot) else spot
+            val at = PanelPlace.placeUpright(head, sp, if (level || !sp.follows) headingNow else heading).position
+            if (abs(slot.scaleX - sp.distM) > 0.01f) slot.show(at = at, kx = sp.distM, ky = sp.distM) else slot.moveTo(at)
         }
     }
 
@@ -1083,6 +1170,14 @@ class WalkScene : LvStore.SceneHost {
         const val VEIL_SORT_BIAS = -1.0f
         const val FOLLOW_DEG = 25f
         const val BOX_WARMUP_MS = 1_500L
+
+        /** The virtual sign stand's round foot (m) and the plaque's back face behind the board's centre (m). */
+        const val STAND_FOOT_M = 0.30f
+        const val PROP_PLAQUE_BACK_M = 0.013f
+
+        /** Props load after the Stage's first frames, one model at a time (mesh upload blocks; see SceneKit.warmUp). */
+        const val PROPS_LOAD_DELAY_MS = 2_500L
+        const val PROP_GAP_MS = 120L
     }
 }
 

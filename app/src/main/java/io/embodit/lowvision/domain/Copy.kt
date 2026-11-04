@@ -132,6 +132,10 @@ class Copy(val lang: Lang) {
     val hintScanning = t("看看四周，我来找地面、桌子和墙（最多 5 秒）", "Look around — finding the floor, a table and walls (5 s at most)")
     val hintMarkDoor = t("看向你家的门（或任何一个出口），捏一下标记；手柄指着它扣扳机", "Look at a door or way out and pinch, or point the controller and pull the trigger")
     val skip = t("跳过", "Skip")
+
+    /** v0.1.5 (q3-1): the home window comes back only while the head is level (head down / head up). */
+    val hintLevelUp = t("抬头平视，面板马上回来", "Look straight ahead, the panel is coming")
+    val hintLevelDown = t("平视前方，面板马上回来", "Look straight ahead, the panel is coming")
     val cancel = t("取消", "Cancel")
     val hintTooNear = t("前面太近，请标一个出口", "Too close ahead — please mark a way out")
     val hintDoorFar = t("选近一点的出口（4 米以内）", "Pick a closer way out (within 4 m)")

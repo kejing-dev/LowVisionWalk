@@ -67,17 +67,20 @@ fun WalkScreen() {
             runCatching { audio.playSystem(effect) }
         }
         LvStore.stageCloser = {
-            scope.launch(Dispatchers.Main.immediate) {
-                // the home window comes back first, while the Stage is still open: closing the last container hands the
-                // focus to the system launcher, and a window opened after that stays behind it (emulator, v0.1.0 #19)
-                LvStore.hiddenHome?.let { (id, tag) ->
-                    LvStore.hiddenHome = null
-                    val reopened = runCatching { context.applicationContext.openWindowContainer(id, tag) }
-                    LvLog.i("HOME reopened before closing the Stage $id/$tag: ${reopened.exceptionOrNull() ?: "ok"}")
-                    delay(HOME_REOPEN_DELAY_MS)
+            fun close() =
+                scope.launch(Dispatchers.Main.immediate) {
+                    // the home window comes back first, while the Stage is still open: closing the last container hands the
+                    // focus to the system launcher, and a window opened after that stays behind it (emulator, v0.1.0 #19)
+                    LvStore.hiddenHome?.let { (id, tag) ->
+                        LvStore.hiddenHome = null
+                        val reopened = runCatching { context.applicationContext.openWindowContainer(id, tag) }
+                        LvLog.i("HOME reopened before closing the Stage $id/$tag: ${reopened.exceptionOrNull() ?: "ok"}")
+                        delay(HOME_REOPEN_DELAY_MS)
+                    }
+                    runCatching { navigator.closeStage() }.onFailure { LvLog.w("STAGE close failed: $it") }
                 }
-                runCatching { navigator.closeStage() }.onFailure { LvLog.w("STAGE close failed: $it") }
-            }
+            // v0.1.5 (q3-1, D9): a window opened while the head is down leans back for good, so it waits for a level head
+            if (LvStore.hiddenHome != null) LvStore.openWhenLevel("leave") { close() } else close()
         }
         LvStore.stageEntered()
         LvLog.i("STAGE enter")
@@ -96,6 +99,8 @@ fun WalkScreen() {
             }
         lifecycleOwner.lifecycle.addObserver(observer)
         onDispose {
+            // a reopen still waiting for a level head: the reopen below takes over (no Stage frames from here on)
+            LvStore.cancelWindowGate("stage disposed")
             lifecycleOwner.lifecycle.removeObserver(observer)
             unregisterSystem<WalkFrameSystem>()
             LvStore.soundHost = null
@@ -126,15 +131,26 @@ fun WalkScreen() {
     val homeLife by LvStore.homeLife.collectAsStateWithLifecycle()
     val wanted = state.windowWanted
     LaunchedEffect(wanted, homeLife) {
+        LvLog.i("WINDOW wanted=$wanted life=$homeLife hidden=${LvStore.hiddenHome} gate=${LvStore.windowGateWaiting}")
+        // not wanted any more (the next task started): a reopen still waiting for a level head is dropped with its hint
+        if (!wanted) LvStore.cancelWindowGate("window not wanted", onlyIf = "reopen")
         if (!wanted || (homeLife != "ON_DESTROY" && homeLife != "never")) return@LaunchedEffect
         val hidden = LvStore.hiddenHome ?: return@LaunchedEffect
         delay(HOME_REOPEN_DELAY_MS)
         if (!LvStore.state.value.windowWanted || LvStore.hiddenHome != hidden) return@LaunchedEffect
-        LvStore.hiddenHome = null
+        // v0.1.5 (q3-1, D9): only with a level head (the window opens square to the line of sight and cannot be tilted
+        // afterwards); meanwhile the hint strip asks to look straight ahead. The pill's 「叫回」 comes through here too.
         val app = context.applicationContext
-        val reopened = runCatching { app.openWindowContainer(hidden.first, hidden.second) }
-        LvLog.i("WINDOW reopened ${hidden.first}/${hidden.second} for ${state.walk?.phase}: ${reopened.exceptionOrNull() ?: "ok"}")
-        if (reopened.isFailure) runCatching { app.openWindowContainer(HOME_AGAIN_ID, HOME_AGAIN_TAG) }
+        LvStore.openWhenLevel("reopen ${state.walk?.phase}") {
+            if (!LvStore.state.value.windowWanted || LvStore.hiddenHome != hidden) {
+                LvLog.i("WINDOW reopen dropped: wanted=${LvStore.state.value.windowWanted}")
+                return@openWhenLevel
+            }
+            LvStore.hiddenHome = null
+            val reopened = runCatching { app.openWindowContainer(hidden.first, hidden.second) }
+            LvLog.i("WINDOW reopened ${hidden.first}/${hidden.second} for ${LvStore.state.value.walk?.phase}: ${reopened.exceptionOrNull() ?: "ok"}")
+            if (reopened.isFailure) runCatching { app.openWindowContainer(HOME_AGAIN_ID, HOME_AGAIN_TAG) }
+        }
     }
 
     val bindTick = scene.bindTick.intValue

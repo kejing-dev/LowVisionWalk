@@ -141,6 +141,8 @@ data class LvState(
     val isEmulator: Boolean = false,
     /** The home page shown outside the walk ([Pages.LOOK] or [Pages.LENS]). */
     val homePage: String = Pages.LOOK,
+    /** v0.1.5 (q3-1): the home window waits for a level head; -1 = 「抬头平视」, +1 = 「平视前方」 (looking up), 0 = none. */
+    val levelHint: Int = 0,
 ) {
     /** The home window's page (its TabBar selection). */
     val page: String
