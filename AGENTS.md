@@ -67,6 +67,7 @@ Use only the emulator assigned to `low-vision` in the factory `state.json` (neve
 ## Debug broadcast (QA)
 
 `adb -s <dev> shell am broadcast -a io.embodit.lowvision.DEBUG -p io.embodit.lowvision --es cmd <name> [--es s <arg>] [extras]`
+(same extras on `io.embodit.lowvision.DEBUG_LIVE`, a receiver registered at run time: after the headset slept unworn, PICO can hold broadcasts to the app for minutes, `dumpsys activity broadcasts` shows `INFINITE_DEFER`)
 (or `tools/dev.sh cmd <name> [arg]`, `tools/dev.sh am <extras…>`). Every command logs `CMD ok|fail <name>` under tag
 `LowVision`; `state` jumps log `CMD reached <id>` when there (opening the Stage, confirming the safety card, waiting
 for the scan and marking the door 2.5 m ahead on the way).
@@ -89,6 +90,7 @@ for the scan and marking the door 2.5 m ahead on the way).
 | `testtex --es s 1\|0` | 「F↑」 orientation test texture on the veil |
 | `lang --es s zh\|en` `mute` `lensSource --es s kitchen\|pills\|stairs\|camera` | |
 | `lensRepeat --es s 0\|1` | 0 = one filter run per photo (chained after the init pipeline), 1 = every 250 ms (default); next open |
+| `lensOpen` `lensClose` `lensHold --es s 1\|0` | the lens buttons' store events (「看滤镜窗」, 「关闭滤镜窗」, 「按住看原样」 press / release); D41 reopen rounds: `DEV=PB324XJGL2090081G tools/d41_reopen.sh OUT` (headset) |
 | `quit` / `quit --es s confirm\|cancel` | settings' 「退出应用」 (opens settings + the confirm) / the two answers (D26; confirm ends the app) |
 | `page --es s look\|lens\|walk\|menu\|settings` | a TabBar item of the home window (same `LvStore.pageSelected`) |
 | `recall` | the pill's 「叫回」: the home window closes and opens again in front (`WINDOW recall` → `steps aside` → `reopened`) |
