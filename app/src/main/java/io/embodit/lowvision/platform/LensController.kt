@@ -51,6 +51,13 @@ import kotlinx.coroutines.withTimeoutOrNull
  * `endSession` binder call), which froze the app on 「关闭滤镜窗」 (ANR). It now runs on its own thread and the app does
  * not wait for it. Without a camera ([hasCamera] false, the emulator) the camera source draws nothing new: the window
  * keeps the last photo and the home window says there is no camera picture.
+ *
+ * Closed by the system (v0.1.6, user's headset v0.1.5 crash): the lens window is the SpatialML service's own container,
+ * so its window bar × closes it without telling the app (no session / container callback in securemr 6.1.9). The
+ * session is dead from then on: every submit fails and every tensor write throws `SSMRException` from native
+ * `resetTensor`; v0.1.5 wrote the masks uncaught on the next 「按住看原样」 and the app crashed. Now every SpatialML call
+ * is guarded, and the first sign of a dead session ([LOST_AFTER] failed runs in a row, or a failed tensor write) closes
+ * the lens as if 「关闭滤镜窗」 had been pressed ([lost]); the next open starts a new instance.
  */
 class LensController(private val appContext: Context, private val hasCamera: Boolean) : LvStore.LensHost {
     private val scope: CoroutineScope = MainScope()
@@ -99,13 +106,13 @@ class LensController(private val appContext: Context, private val hasCamera: Boo
                     return@launch
                 }
                 LvLog.i("LENS ready in ${SystemClock.elapsedRealtime() - started} ms")
-                apply(source, vision, compare)
+                applyGuarded(source, vision, compare)
             }
     }
 
     override fun update(source: LensSource, vision: Vision, compare: Boolean) {
         if (session == null) return
-        scope.launch { apply(source, vision, compare) }
+        scope.launch { applyGuarded(source, vision, compare) }
     }
 
     override fun close() {
@@ -132,6 +139,26 @@ class LensController(private val appContext: Context, private val hasCamera: Boo
                 runCatching { s.destructor.destroy() }.onFailure { LvLog.w("LENS session destroy: $it") }
                 LvLog.i("LENS session destroyed in ${SystemClock.elapsedRealtime() - t0} ms")
             }, "lens-destroy").apply { isDaemon = true }.start()
+        }
+    }
+
+    /** [s] is dead (its window was closed from the system's window bar): close the lens the way the app's button does. */
+    private fun lost(s: SpatialMLSession, why: String) {
+        if (session !== s) return
+        LvLog.w("LENS session lost: $why")
+        // the service process goes when its last container closes (killProcessIfLast): start over with a new instance
+        instance = null
+        LvStore.lensClosed("lens window closed by the system")
+    }
+
+    private suspend fun applyGuarded(source: LensSource, vision: Vision, compare: Boolean) {
+        val s = session ?: return
+        try {
+            apply(source, vision, compare)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            lost(s, "apply: $e")
         }
     }
 
@@ -212,6 +239,7 @@ class LensController(private val appContext: Context, private val hasCamera: Boo
             scope.launch {
                 val pipeline = runCatching { framePipeline(s, camera = false) }.getOrElse {
                     LvLog.e("LENS photo pipeline: $it", it)
+                    lost(s, "photo pipeline: $it")
                     return@launch
                 }
                 var n = 0
@@ -225,8 +253,9 @@ class LensController(private val appContext: Context, private val hasCamera: Boo
                         n++
                         if (n == 2) LvLog.i("LENS picture up $photoName: 2 runs in ${SystemClock.elapsedRealtime() - t0} ms")
                         if (n % 40 == 0) LvLog.i("LENS photo $photoName runs=$n")
-                    } else if (++errors >= 5) {
+                    } else if (++errors >= LOST_AFTER) {
                         LvLog.e("LENS photo stopped: ${r.exceptionOrNull()}")
+                        lost(s, "photo runs failed: ${r.exceptionOrNull()}")
                         break
                     }
                     delay(PHOTO_MS)
@@ -245,6 +274,7 @@ class LensController(private val appContext: Context, private val hasCamera: Boo
             scope.launch {
                 val pipeline = runCatching { framePipeline(s, camera = true) }.getOrElse {
                     LvLog.e("LENS camera pipeline: $it", it)
+                    lost(s, "camera pipeline: $it")
                     return@launch
                 }
                 var errors = 0
@@ -257,8 +287,9 @@ class LensController(private val appContext: Context, private val hasCamera: Boo
                         errors = 0
                         frames++
                         if (++total == 2) LvLog.i("LENS picture up camera: 2 runs")
-                    } else if (++errors >= 5) {
+                    } else if (++errors >= LOST_AFTER) {
                         LvLog.e("LENS camera stopped: ${r.exceptionOrNull()}")
+                        lost(s, "camera runs failed: ${r.exceptionOrNull()}")
                         break
                     }
                     val now = SystemClock.elapsedRealtime()
@@ -276,7 +307,10 @@ class LensController(private val appContext: Context, private val hasCamera: Boo
         runCatching {
             lastTask = framePipeline(s, camera).submit(lastTask)
             LvLog.i("LENS run ${if (camera) "camera" else photoName}")
-        }.onFailure { LvLog.e("LENS run failed: $it", it) }
+        }.onFailure {
+            LvLog.e("LENS run failed: $it", it)
+            lost(s, "run: $it")
+        }
     }
 
     /** The filter graph with its placeholder bindings; [Bound.submit] runs it once. */
@@ -337,6 +371,9 @@ class LensController(private val appContext: Context, private val hasCamera: Boo
         private const val CONTAINER_W = 1500
         private const val CONTAINER_H = 1125
         private const val CONTAINER_D = 100
+
+        /** Failed runs in a row that mean the session is gone (headset: a closed window fails every run at once). */
+        private const val LOST_AFTER = 3
 
         /** Debug only (`lensRepeat 0`): one run per photo (chained after the init task), to compare with v0.1.2. */
         @Volatile var repeatPhotos = true

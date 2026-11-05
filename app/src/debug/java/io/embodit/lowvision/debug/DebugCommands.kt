@@ -82,6 +82,10 @@ object DebugCommands {
                 LvStore.signChosen(if (arg == "wrong") w.signChoices.first { it != w.signWord } else w.signWord)
             }
             "lensSource" -> LvStore.lensSource(LensSource.of(arg ?: a["photo"]) ?: return false)
+            // D41 reopen rounds: the same store events as 「看滤镜窗」, 「关闭滤镜窗」 and 「按住看原样」 (1 = press, 0 = release)
+            "lensOpen" -> LvStore.lensClicked()
+            "lensClose" -> LvStore.lensCloseClicked()
+            "lensHold" -> LvStore.lensCompare(arg != "0")
             // compare: 0 = one run per photo (v0.1.2), 1 = the photo graph again every 250 ms (v0.1.3); takes effect on the next open
             "lensRepeat" -> LensController.repeatPhotos = arg != "0"
             // D26: the same store events as the settings' buttons; no arg = 「退出应用」, confirm / cancel = the two answers

@@ -1,6 +1,6 @@
 # Low Vision Walk（低视力体验）
 
-PICO OS 6 spatial app (v0.1.5), Kotlin, PICO Spatial SDK 6.1.9 (BOM), package `io.embodit.lowvision`. Factory app
+PICO OS 6 spatial app (v0.1.6), Kotlin, PICO Spatial SDK 6.1.9 (BOM), package `io.embodit.lowvision`. Factory app
 `low-vision`, skeleton D. Design package (binding):
 `C:\Users\Admin\Downloads\spatial-app-factory\apps\low-vision\design-package.json` (states S01–S28, panels P1–P10,
 entities E1–E6, interactions T1–T18). Built from Life-size Creatures / Spatial Ruler pieces (window + secondary Mixed

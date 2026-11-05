@@ -9,5 +9,10 @@
                 <action android:name="io.embodit.lowvision.DEBUG" />
             </intent-filter>
         </receiver>
+        <!-- The same commands under io.embodit.lowvision.DEBUG_LIVE, registered at run time (headset defers the manifest one). -->
+        <provider
+            android:name=".debug.DebugLiveReceiver"
+            android:authorities="io.embodit.lowvision.debuglive"
+            android:exported="false" />
     </application>
 </manifest>
