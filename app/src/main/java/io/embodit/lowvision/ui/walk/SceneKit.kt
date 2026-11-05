@@ -217,7 +217,7 @@ internal object MeshFactory {
  * mesh at all, so the Stage opens without a main-thread wait on the render service.
  */
 internal object MeshCache {
-    val box: MeshResource by lazy { timed("box") { MeshResource.createBox(Vector3(1f, 1f, 1f)).also { it.toGlobal() } } }
+    val box: MeshResource by lazy { timed("box") { MeshResource.createBox(Vector3(1f, 1f, 1f)).also { it.toGlobal() } } } // gate:allow geometry 地面标记十字 / 门框虚线
     val quad: MeshResource by lazy { timed("quad") { MeshFactory.unitQuad("quad").also { it.toGlobal() } } }
 
     private fun <T> timed(what: String, f: () -> T): T {
