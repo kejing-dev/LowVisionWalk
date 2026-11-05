@@ -290,6 +290,7 @@ class Copy(val lang: Lang) {
     val closeLens = t("关闭滤镜窗", "Close the lens")
     val lensNote = t("滤镜窗像一块实时监视屏，显示你正前方被处理后的样子；不能戴着走", "The lens works like a live monitor showing what's in front of you, processed. You can't walk with it.")
     val lensBlackHint = t("窗里一直是黑的？换示例照片看看", "Lens stays black? Try a sample photo.")
+    val lensCameraDenied = t("没有相机权限，先看示例照片；要看摄像头画面，在系统设置里允许相机", "No camera permission, showing a sample photo. Allow the camera in system settings to see live.")
     val lensNoCamera = t("这台设备没有摄像头画面，换示例照片看看", "No camera picture on this device — try a sample photo")
     val lensUnavailable = t("这台设备上滤镜窗开不了", "The lens can't open on this device")
     val ok = t("好", "OK")

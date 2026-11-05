@@ -13,7 +13,7 @@ A="adb -s $DEV"
 LOG="$OUT/d41-reopen.log"
 # DEBUG_LIVE: the run-time receiver (the headset can hold broadcasts to the manifest one for minutes)
 cmd() { $A shell am broadcast -a $PKG.DEBUG_LIVE -p $PKG --es cmd "$@" >/dev/null; }
-state() { cmd state --es id "$1"; sleep "${2:-4}"; }
+state() { $A shell input keyevent KEYCODE_WAKEUP; cmd state --es id "$1"; sleep "${2:-4}"; }
 mark() { sync; echo "== $*"; $A shell "log -t LowVision 'D41 $(echo "$*" | tr -d "'<>;()")'"; }
 # wait until the app has handled everything sent so far (broadcasts to it were once held back 4 min device-wide)
 SYNCS=0
