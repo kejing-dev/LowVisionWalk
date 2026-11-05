@@ -40,6 +40,9 @@ for r in 1 2; do
   cmd lensOpen; sleep 5; cmd lensClose; sleep 2
   cmd lensOpen; sleep 5; cmd lensHold --es s 1; sleep 2; cmd lensHold --es s 0; sleep 1; cmd lensClose; sleep 2
 
+  mark "round $r lens: hold while still opening is ignored (v0.1.8 button gate)"
+  cmd lensOpen; cmd lensHold --es s 1; sleep 1; cmd lensHold --es s 0; sleep 5; cmd lensClose; sleep 2
+
   mark "round $r lens: camera -> close -> kitchen photo; pills -> close -> camera"
   cmd lensOpen; sleep 4; cmd lensClose; sleep 2
   cmd lensOpen; sleep 3; cmd lensSource --es s kitchen; sleep 3; cmd lensHold --es s 1; sleep 1; cmd lensHold --es s 0
@@ -67,5 +70,6 @@ sleep 2
 kill $LC 2>/dev/null
 NOW="$($A shell pidof $PKG | tr -d '\r')"
 echo "pid before=$PID after=$NOW"
+echo "lens live: $(grep -c '(lens live)' "$LOG")  hold accepted: $(grep -c '(lens compare true)' "$LOG")"
 echo "FATAL: $(grep -c 'FATAL EXCEPTION' "$LOG")  lost: $(grep -c 'LENS session lost' "$LOG")  pictures up: $(grep -c 'LENS picture up' "$LOG")  ready: $(grep -c 'LENS ready' "$LOG")"
 [ "$PID" = "$NOW" ] && ! grep -q 'FATAL EXCEPTION' "$LOG" && grep -q 'LENS ready' "$LOG" && echo PASS || { echo FAIL; exit 1; }

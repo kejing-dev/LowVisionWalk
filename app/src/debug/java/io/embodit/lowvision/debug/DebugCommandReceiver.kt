@@ -3,7 +3,6 @@ package io.embodit.lowvision.debug
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
-import io.embodit.lowvision.platform.LensController
 import io.embodit.lowvision.platform.LvLog
 
 /**
@@ -25,15 +24,6 @@ class DebugCommandReceiver : BroadcastReceiver() {
         }
         parts.getOrNull(1)?.let { args.putIfAbsent("s", it) }
         LvLog.i("CMD recv ${parts[0]} args=$args")
-        if (parts[0] == "lensDump") return dumpLens(context, args["s"] ?: "frame")
         DebugCommands.run(parts[0], args)
-    }
-
-    /** `lensDump --es s NAME`: the lens picture the 「滤镜窗」 page shows now, as <external files>/lens-NAME.png (headset screencap fails). */
-    private fun dumpLens(context: Context, name: String) {
-        val p = LensController.picture.value ?: return LvLog.i("CMD fail lensDump: no picture")
-        val f = java.io.File(context.getExternalFilesDir(null), "lens-$name.png")
-        f.outputStream().use { p.bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, it) }
-        LvLog.i("CMD ok lensDump ${f.absolutePath} ${p.bitmap.width}x${p.bitmap.height} seq=${p.seq}")
     }
 }

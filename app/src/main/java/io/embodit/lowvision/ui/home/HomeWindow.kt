@@ -1,11 +1,6 @@
 package io.embodit.lowvision.ui.home
 
-import android.Manifest
-import android.content.pm.PackageManager
 import android.graphics.Bitmap
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.LocalIndication
 import androidx.compose.foundation.background
@@ -47,7 +42,6 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.drawscope.Stroke
-import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
@@ -88,7 +82,6 @@ import io.embodit.lowvision.domain.Lang
 import io.embodit.lowvision.domain.Side
 import io.embodit.lowvision.domain.VeilMath
 import io.embodit.lowvision.domain.Vision
-import io.embodit.lowvision.platform.LensController
 import io.embodit.lowvision.platform.LvLog
 import io.embodit.lowvision.ui.theme.FitText
 import io.embodit.lowvision.ui.theme.LvColors
@@ -245,10 +238,19 @@ private fun StageBridge(windowId: String, windowTag: String?) {
                 LvStore.homeLife.value = event.name
                 LvLog.i("WINDOW $windowId/$windowTag ${event.name}")
             }
+        LvStore.spotHost =
+            object : LvStore.SpotHost {
+                override fun openSpot(gen: Int) = navigator.openWindowContainer(LENS_SPOT_ID, "spot$gen")
+
+                override fun closeSpot() {
+                    runCatching { navigator.closeWindowContainer(LENS_SPOT_ID) }.onFailure { LvLog.w("LENS spot close: $it") }
+                }
+            }
         lifecycleOwner.lifecycle.addObserver(observer)
         onDispose {
             lifecycleOwner.lifecycle.removeObserver(observer)
             LvStore.stageHost = null
+            LvStore.spotHost = null
         }
     }
 }
@@ -496,11 +498,6 @@ private fun BottomButtons(state: LvState, c: Copy) {
 // lens controls (P9 / S20 – S22)
 // ---------------------------------------------------------------------------------------------
 
-/**
- * The open lens (v0.1.7): the read-back picture, its controls and both buttons on this one page of the home window
- * (user, headset v0.1.6: 「他们需要在一个窗口」). The camera source asks for the camera permission here; refused, the page
- * falls back to the kitchen photo and says why.
- */
 @Composable
 private fun LensControls(state: LvState, v: Vision, c: Copy) {
     var now by remember { mutableLongStateOf(LvStore.now()) }
@@ -510,99 +507,72 @@ private fun LensControls(state: LvState, v: Vision, c: Copy) {
             delay(1_000)
         }
     }
-    val context = LocalContext.current
-    val askCamera = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { LvStore.cameraPermission(it) }
-    LaunchedEffect(state.lens.openedAtMs, state.lens.source) {
-        if (state.lens.source == LensSource.CAMERA && !state.isEmulator && context.checkSelfPermission(Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) {
-            runCatching { askCamera.launch(Manifest.permission.CAMERA) }.onFailure { LvLog.w("LENS camera permission request: $it") }
-        }
-    }
-    Column(Modifier.fillMaxSize()) {
-        Row(Modifier.fillMaxWidth().weight(1f)) {
-            LensPicture(state, c, now, Modifier.width(PICTURE_W).height(PICTURE_W * 3 / 4))
-            Spacer(Modifier.width(16.dp))
-            Column(Modifier.weight(1f)) {
-                Text(c.lensSource, style = LvType.small, color = PicoTheme.colorScheme.labelPrimary)
-                Spacer(Modifier.height(6.dp))
-                SegmentControl(modifier = Modifier.fillMaxWidth().height(52.dp), backgroundColor = PicoTheme.colorScheme.fillTertiary) {
-                    listOf(LensSource.CAMERA to c.sourceCamera, LensSource.KITCHEN to c.photoKitchen, LensSource.PILLS to c.photoPills, LensSource.STAIRS to c.photoStairs).forEach { (s, label) ->
-                        SegmentItem(
-                            selected = state.lens.source == s,
-                            onClick = { LvStore.lensSource(s) },
-                            modifier = Modifier.weight(1f).height(48.dp),
-                            textStyle = PicoTheme.typography.labelLarge,
-                            colors =
-                                SegmentControlDefaults.colors(
-                                    itemBackgroundColor = Color.Transparent,
-                                    itemContentColor = PicoTheme.colorScheme.labelPrimary,
-                                    selectedItemBackgroundColor = PicoTheme.colorScheme.fillSecondary,
-                                    selectedItemContentColor = PicoTheme.colorScheme.labelPrimary,
-                                ),
-                            title = { FitText(text = label, where = "home/label", maxLines = 1, softWrap = false) },
-                        )
-                    }
+    Row(Modifier.fillMaxSize()) {
+        FieldDiagram(v, Modifier.size(160.dp))
+        Spacer(Modifier.width(20.dp))
+        Column(Modifier.weight(1f)) {
+            Text(c.lensSource, style = LvType.small, color = PicoTheme.colorScheme.labelPrimary)
+            Spacer(Modifier.height(6.dp))
+            SegmentControl(modifier = Modifier.fillMaxWidth().height(52.dp), backgroundColor = PicoTheme.colorScheme.fillTertiary) {
+                listOf(LensSource.CAMERA to c.sourceCamera, LensSource.KITCHEN to c.photoKitchen, LensSource.PILLS to c.photoPills, LensSource.STAIRS to c.photoStairs).forEach { (s, label) ->
+                    SegmentItem(
+                        selected = state.lens.source == s,
+                        onClick = { LvStore.lensSource(s) },
+                        modifier = Modifier.width(104.dp).height(48.dp),
+                        textStyle = PicoTheme.typography.labelLarge,
+                        colors =
+                            SegmentControlDefaults.colors(
+                                itemBackgroundColor = Color.Transparent,
+                                itemContentColor = PicoTheme.colorScheme.labelPrimary,
+                                selectedItemBackgroundColor = PicoTheme.colorScheme.fillSecondary,
+                                selectedItemContentColor = PicoTheme.colorScheme.labelPrimary,
+                            ),
+                        title = { FitText(text = label, where = "home/label", maxLines = 1, softWrap = false) },
+                    )
                 }
-                Spacer(Modifier.height(10.dp))
-                SeverityControl(v, c)
-                Spacer(Modifier.height(8.dp))
-                FitText(c.lensNote, where = "home/c.lensNote", style = LvType.small, color = PicoTheme.colorScheme.labelPrimary, maxLines = 3)
             }
-        }
-        Spacer(Modifier.height(12.dp))
-        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            if (LensRules.canHold(state.lens)) HoldButton(c.compare, Modifier.weight(1f)) { LvStore.lensCompare(it) }
-            Button(onClick = { LvStore.lensCloseClicked() }, modifier = Modifier.weight(1f).height(52.dp), colors = ButtonDefaults.buttonColors(containerColor = PicoTheme.colorScheme.fillSecondary, contentColor = PicoTheme.colorScheme.labelPrimary)) {
-                FitText(c.closeLens, where = "home/c.closeLens", maxLines = 1)
+            Spacer(Modifier.height(10.dp))
+            SeverityControl(v, c)
+            Spacer(Modifier.height(8.dp))
+            if (state.lens.source == LensSource.CAMERA) {
+                val line = if (state.isEmulator) c.lensNoCamera else if (now - state.lens.openedAtMs > 5_000) c.lensBlackHint else null
+                if (line != null) FitText(line, where = "home/line", style = LvType.body, color = PicoTheme.colorScheme.labelPrimary, maxLines = 2)
+            }
+            FitText(c.lensNote, where = "home/c.lensNote", style = LvType.small, color = PicoTheme.colorScheme.labelPrimary, maxLines = 2)
+            Spacer(Modifier.weight(1f))
+            // v0.1.8 (user: 「关掉滤镜窗口的时候，就不应该可以点击按住看原样」): live only while the lens picture is up
+            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                HoldButton(c.compare, Modifier.weight(1f), enabled = LensRules.canHold(state.lens)) { LvStore.lensCompare(it) }
+                Button(onClick = { LvStore.lensCloseClicked() }, modifier = Modifier.weight(1f).height(52.dp), colors = ButtonDefaults.buttonColors(containerColor = PicoTheme.colorScheme.fillSecondary, contentColor = PicoTheme.colorScheme.labelPrimary)) {
+                    FitText(c.closeLens, where = "home/c.closeLens", maxLines = 1)
+                }
             }
         }
     }
 }
 
-private val PICTURE_W = 320.dp
-
-/** The read-back lens picture ([LensController.picture]), or a dark frame with one line saying why there is none yet. */
+/** A press-and-hold button: [onHold] true on press, false on release or cancel (T14 / P7 peek); greyed and inert when not [enabled]. */
 @Composable
-private fun LensPicture(state: LvState, c: Copy, now: Long, modifier: Modifier) {
-    val picture by LensController.picture.collectAsStateWithLifecycle()
-    val shape = RoundedCornerShape(16.dp)
-    Box(modifier.clip(shape).background(LvColors.PlateInk, shape), contentAlignment = Alignment.Center) {
-        val p = picture
-        if (p != null) {
-            val image = remember(p.seq) { p.bitmap.asImageBitmap() }
-            Image(bitmap = image, contentDescription = c.lensTitle, modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
-        }
-        val line =
-            when {
-                state.lens.cameraDenied -> c.lensCameraDenied
-                state.lens.source != LensSource.CAMERA -> null
-                state.isEmulator -> c.lensNoCamera
-                p == null && now - state.lens.openedAtMs > 5_000 -> c.lensBlackHint
-                else -> null
-            }
-        if (line != null) {
-            FitText(line, where = "home/lensPicture", style = LvType.small, color = LvColors.OnPlate, maxLines = 2, modifier = Modifier.align(Alignment.BottomCenter).background(LvColors.PlateInk.copy(alpha = 0.8f)).padding(horizontal = 10.dp, vertical = 6.dp))
-        }
-    }
-}
-
-/** A press-and-hold button: [onHold] true on press, false on release or cancel (T14 / P7 peek). */
-@Composable
-fun HoldButton(label: String, modifier: Modifier, container: Color = PicoTheme.colorScheme.fillSecondary, content: Color = PicoTheme.colorScheme.labelPrimary, onHold: (Boolean) -> Unit) {
+fun HoldButton(label: String, modifier: Modifier, container: Color = PicoTheme.colorScheme.fillSecondary, content: Color = PicoTheme.colorScheme.labelPrimary, enabled: Boolean = true, onHold: (Boolean) -> Unit) {
     val shape = RoundedCornerShape(26.dp)
     Box(
         modifier =
             modifier.height(52.dp)
+                .alpha(if (enabled) 1f else 0.4f)
                 .clip(shape)
                 .background(container, shape)
-                .spatialHoverEffect()
-                .pointerInput(Unit) {
-                    awaitEachGesture {
-                        awaitFirstDown(requireUnconsumed = false)
-                        onHold(true)
-                        waitForUpOrCancellation()
-                        onHold(false)
-                    }
-                },
+                .then(
+                    if (!enabled) Modifier
+                    else
+                        Modifier.spatialHoverEffect().pointerInput(Unit) {
+                            awaitEachGesture {
+                                awaitFirstDown(requireUnconsumed = false)
+                                onHold(true)
+                                waitForUpOrCancellation()
+                                onHold(false)
+                            }
+                        }
+                ),
         contentAlignment = Alignment.Center,
     ) {
         FitText(label, where = "home/label", style = PicoTheme.typography.labelLarge, color = content, maxLines = 1)

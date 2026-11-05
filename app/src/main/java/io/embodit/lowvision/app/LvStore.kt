@@ -70,6 +70,27 @@ object LvStore {
     var soundHost: ((Sound) -> Unit)? = null
     var lensHost: LensHost? = null
 
+    /**
+     * Opens / closes the lens spot window beside the home window (v0.1.3, QA #2 q2-2). The system puts the SpatialML
+     * container in the middle of whichever window is focused when the session is created, 5 cm in front of it, and has no
+     * placement parameter: in front of the home window it covered the controls, and a press on the home window raised the
+     * window over it. So the session is created only once the spot window (to the right of the home window) is focused.
+     */
+    var spotHost: SpotHost? = null
+
+    interface SpotHost {
+        /** [gen] goes into the window's tag, so every open is a new window (a closing one is never reused). */
+        fun openSpot(gen: Int)
+
+        fun closeSpot()
+    }
+
+    private var lensWaitingForSpot = false
+
+    /** Which spot window is the current one: a spot window closed just before the next open reports with an older number. */
+    @Volatile var spotGen = 0
+        private set
+
     /** Lens window side (SpatialML); null while the lens is not built in. */
     interface LensHost {
         fun open(source: LensSource, vision: Vision, compare: Boolean)
@@ -689,28 +710,45 @@ object LvStore {
             set(s.copy(lens = LensState(open = false, error = "no SpatialML host")), "lens unavailable")
             return
         }
-        set(s.copy(lens = LensState(open = true, source = source, openedAtMs = now()), settingsOpen = false, homePage = Pages.LENS), "lens open")
-        host.open(source, v, false)
-    }
-
-    /** Answer to the camera permission the 「滤镜窗」 page asks for (Readback Mode, camera source only). */
-    fun cameraPermission(granted: Boolean) {
-        val v = s.selected ?: return
-        if (!s.lens.open || s.lens.source != LensSource.CAMERA) return
-        LvLog.i("LENS camera permission granted=$granted")
-        if (granted) {
-            lensHost?.update(LensSource.CAMERA, v, s.lens.comparing)
+        set(s.copy(lens = LensRules.opened(source, now()), settingsOpen = false, homePage = Pages.LENS), "lens open")
+        val spot = spotHost
+        if (spot == null) {
+            host.open(source, v, false)
             return
         }
-        set(s.copy(lens = s.lens.copy(source = LensSource.KITCHEN, cameraDenied = true, openedAtMs = now())), "lens camera denied")
-        lensHost?.update(LensSource.KITCHEN, v, s.lens.comparing)
+        lensWaitingForSpot = true
+        spot.openSpot(++spotGen)
+        // the spot window reports focus within ~1 s; without it the lens still opens (where the system puts it)
+        main.postDelayed({ lensSpotReady("no focus after $SPOT_WAIT_MS ms") }, SPOT_WAIT_MS)
     }
+
+    /** The spot window is focused (or the wait is over): now the session, so its container lands in front of the spot. */
+    fun lensSpotReady(why: String) {
+        if (!lensWaitingForSpot || !s.lens.open) return
+        lensWaitingForSpot = false
+        val v = s.selected ?: return
+        LvLog.i("LENS spot ready ($why)")
+        lensHost?.open(s.lens.source, v, s.lens.comparing)
+    }
+
+    /** The spot window went away (closed by the app, or by the user from its window bar). */
+    fun lensSpotGone(gen: Int) {
+        if (gen == spotGen && s.lens.open) lensClosed("spot window closed")
+    }
+
+    private const val SPOT_WAIT_MS = 3_000L
 
     fun lensSource(source: LensSource) {
         val v = s.selected ?: return
         if (!s.lens.open) return
         set(s.copy(lens = s.lens.copy(source = source, openedAtMs = now())), "lens source ${source.id}")
         lensHost?.update(source, v, s.lens.comparing)
+    }
+
+    /** The lens picture is up (the session ran twice): 「按住看原样」 comes alive. */
+    fun lensLive() {
+        val lens = LensRules.live(s.lens) ?: return
+        set(s.copy(lens = lens), "lens live")
     }
 
     fun lensCompare(down: Boolean) {
@@ -724,14 +762,18 @@ object LvStore {
 
     fun lensClosed(why: String) {
         if (!s.lens.open) return
+        lensWaitingForSpot = false
         lensHost?.close()
-        set(s.copy(lens = LensState(source = s.lens.source)), "lens closed $why")
+        set(s.copy(lens = LensRules.closed(s.lens)), "lens closed $why")
+        spotHost?.closeSpot()
     }
 
     fun lensFailed(reason: String) {
         LvLog.w("LENS failed $reason")
+        lensWaitingForSpot = false
         lensHost?.close()
-        set(s.copy(lens = LensState(error = reason)), "lens failed")
+        set(s.copy(lens = LensRules.failed(reason)), "lens failed")
+        spotHost?.closeSpot()
     }
 
     fun lensErrorOk() = set(s.copy(lens = LensState()), "lens error ok")

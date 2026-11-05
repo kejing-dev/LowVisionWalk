@@ -1,6 +1,6 @@
 # Low Vision Walk（低视力体验）
 
-PICO OS 6 spatial app (v0.1.7), Kotlin, PICO Spatial SDK 6.1.9 (BOM), package `io.embodit.lowvision`. Factory app
+PICO OS 6 spatial app (v0.1.8), Kotlin, PICO Spatial SDK 6.1.9 (BOM), package `io.embodit.lowvision`. Factory app
 `low-vision`, skeleton D. Design package (binding):
 `C:\Users\Admin\Downloads\spatial-app-factory\apps\low-vision\design-package.json` (states S01–S28, panels P1–P10,
 entities E1–E6, interactions T1–T18). Built from Life-size Creatures / Spatial Ruler pieces (window + secondary Mixed
@@ -89,8 +89,7 @@ for the scan and marking the door 2.5 m ahead on the way).
 | `bring --es s table\|sign\|door` / `hide --es s …` | the task card's scene-object rows (「移到标记处」: onto the marker; without one it starts placing it) |
 | `testtex --es s 1\|0` | 「F↑」 orientation test texture on the veil |
 | `lang --es s zh\|en` `mute` `lensSource --es s kitchen\|pills\|stairs\|camera` | |
-| `lensRepeat --es s 0\|1` | 0 = one filter run per photo, 1 = every 250 ms (default); next open |
-| `lensDump --es s NAME` | saves the lens picture as `/sdcard/Android/data/io.embodit.lowvision/files/lens-NAME.png` |
+| `lensRepeat --es s 0\|1` | 0 = one filter run per photo (chained after the init pipeline), 1 = every 250 ms (default); next open |
 | `lensOpen` `lensClose` `lensHold --es s 1\|0` | the lens buttons' store events (「看滤镜窗」, 「关闭滤镜窗」, 「按住看原样」 press / release); D41 reopen rounds: `DEV=PB324XJGL2090081G tools/d41_reopen.sh OUT` (headset) |
 | `quit` / `quit --es s confirm\|cancel` | settings' 「退出应用」 (opens settings + the confirm) / the two answers (D26; confirm ends the app) |
 | `page --es s look\|lens\|walk\|menu\|settings` | a TabBar item of the home window (same `LvStore.pageSelected`) |
@@ -146,28 +145,24 @@ The veil is a large transparent surface: shoot each state twice and keep the sec
 - D24: no colliders on detected planes. Marking the door on a wall = pinch the door ghost the controller ray puts there;
   the floor catcher (app-owned virtual floor) is on only while marking. See factory `apps/low-vision/build/reality-audit.md`.
 
-## Lens (P9, S20–S22, S28) — v0.1.7: one window
+## Lens window (P9, S20–S22, S28) — v0.1.3
 
-- User, headset v0.1.6: 「他们需要在一个窗口」 (the picture and 「按住看原样」 in one window). A Secure Mode SpatialML session
-  can only show its output in a runtime-owned container, which is a window of its own (v0.1.3–v0.1.6: a container beside
-  the home window, centred on a helper `LensSpot` window). v0.1.7 runs the session in **Readback Mode**
-  (`ContainerType.DISABLED`, container 0 × 0 × 0): after every pipeline run `LensController.readFrame` reads the RGBA
-  dynamic texture back (`com.pico.spatial.ml:readback`, `readbackContentSuspend`) into one of three bitmaps, published as
-  `LensController.picture`; the home window's 「滤镜窗」 page draws it (320 × 240 dp) with the source / severity controls
-  beside it and 「按住看原样」 + 「关闭滤镜窗」 under it. No `LensSpot` window, no lens_panel scene any more.
-- Camera source needs `android.permission.CAMERA` (Readback Mode); the page asks when the camera is the source,
-  `LvStore.cameraPermission` resumes the camera or, refused, falls back to the kitchen photo with a line saying why
-  (`LensState.cameraDenied`). Photos need no permission. For unattended device runs: `adb shell pm grant
-  io.embodit.lowvision android.permission.CAMERA`.
-- Filter: operator-only graph (blur / contrast / fade / patch masks from `domain/LensMasks.kt`), unchanged. Photos run
-  every 250 ms, the camera each 66 ms, each run chained after the last and read back; the headset measured 6–7 Hz with
-  readback (`LENS camera … Hz`). Read-back frames are 640 × 480, rows not padded on the headset (a padded stride is
-  handled and logged).
-- Session lost (v0.1.6): every SpatialML call is guarded; 3 failed runs in a row, or a failed tensor write / readback,
-  closes the lens the way 「关闭滤镜窗」 does and the next open makes a new instance (`tools/d41_reopen.sh` kills the
-  service to check). `lensDump --es s NAME` (debug) saves the current picture to
-  `/sdcard/Android/data/io.embodit.lowvision/files/lens-NAME.png` (headset screencap fails).
-- Emulator: the camera source only shows 「没有摄像头画面」. Real camera: headset only.
+- SpatialML secure session (`platform/LensController.kt`), operator-only filter (blur / contrast / fade / patch masks from
+  `domain/LensMasks.kt`). Container 1500 × 1125 × 100 units = 0.6 × 0.45 m (1 unit = 0.4 mm, measured); the panel glb
+  (`tools/spatialml/make_lens_assets.py`) is 0.59 × 0.4425 m. v0.1.2's 1.2 × 0.9 m panel in a 0.48 × 0.36 m container
+  showed only the middle 40 % of the picture.
+- Placement (QA #2 q2-2; v0.1.4: the controls are the 「滤镜窗」 page): the system puts the container in the middle of the window that has focus when the session is
+  created, 5.7 cm in front of it, and raises a window over it when the window gets focus. So 「透过滤镜看」 first opens the
+  lens spot window (`ui/home/LensSpot.kt`, `WindowContainer("LensSpot", placement = Placement.right(home))`, a new tag
+  per open) and creates the session once that window is focused (`LvStore.lensSpotReady`, 3 s fallback). The container
+  stands beside the home window; all lens controls stay in the home window. Closing the lens closes the spot window;
+  closing the spot window from its bar closes the lens.
+- Frames (QA #2 q2-1): every pipeline run waits for the one before, the first for the init pipeline (which binds the
+  dynamic texture to the panel). v0.1.2 submitted the photo once without waiting, the write came before the binding and
+  the window stayed black. Photos now run every 250 ms (`LENS picture up <photo>: 2 runs in … ms`), the camera at 15 Hz
+  (`LENS picture up camera`, `LENS camera … Hz`).
+- Emulator: the camera source only shows 「没有摄像头画面」 (no camera pipeline without a camera: a session that asked for
+  camera frames never finished destroying, see factory `feedback/pico-cli-feedback.md`). Real camera: headset only.
 
 ## Floor marker (T17, v0.1.3, QA #2 q2-3 / profile D1)
 
@@ -185,6 +180,6 @@ Every text with a fixed number of lines is `ui/theme/FitText` and logs `OVERFLOW
 
 ## Not built yet / device only
 
-- Lens with the real camera (S21): the page layout seen in the headset (screencap fails), the permission dialog.
+- Lens window with the real camera (S21): look, frame rate (`LENS camera … Hz`), filter strength.
 - Device only: veil lag on fast head turns (N1), plane detection quality / TABLE labels (N3), auto take-off thresholds
   (N10), B / Y on the real controller (N9), walking feel.

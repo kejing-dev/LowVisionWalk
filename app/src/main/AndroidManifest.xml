@@ -2,9 +2,6 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools">
 
-    <!-- v0.1.7: the lens picture is read back into the home window (SpatialML Readback Mode); camera source only -->
-    <uses-permission android:name="android.permission.CAMERA" />
-
     <application
         android:name=".platform.SpatialApplication"
         android:dataExtractionRules="@xml/data_extraction_rules"

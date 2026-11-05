@@ -12,8 +12,8 @@ android {
         applicationId = "io.embodit.lowvision"
         minSdk = 35
         targetSdk = 35
-        versionCode = 8
-        versionName = "0.1.7"
+        versionCode = 9
+        versionName = "0.1.8"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         ndk { abiFilters.add("arm64-v8a") }
@@ -43,8 +43,6 @@ android {
 
 dependencies {
     implementation(libs.spatial.ml.securemr)
-    implementation(libs.spatial.ml.readback)
-    implementation(libs.androidx.activity.compose)   // camera permission prompt on the lens page (already pulled in by SpatialUI)
     implementation(libs.androidx.core.ktx)
     implementation(platform(libs.spatial.bom))
     implementation(libs.spatial.core)

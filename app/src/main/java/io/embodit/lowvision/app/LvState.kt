@@ -123,8 +123,8 @@ enum class LensSource(val id: String) {
     }
 }
 
-/** The lens (P9, the home window's 「滤镜窗」 page). [error] non-null = S23; [cameraDenied]: the camera permission was refused. */
-data class LensState(val open: Boolean = false, val source: LensSource = LensSource.KITCHEN, val comparing: Boolean = false, val error: String? = null, val openedAtMs: Long = 0L, val cameraDenied: Boolean = false)
+/** The lens window (P9, Shared Space). [error] non-null = S23. */
+data class LensState(val open: Boolean = false, val source: LensSource = LensSource.KITCHEN, val comparing: Boolean = false, val error: String? = null, val openedAtMs: Long = 0L, val live: Boolean = false)
 
 data class LvState(
     val lang: Lang = Lang.ZH,
