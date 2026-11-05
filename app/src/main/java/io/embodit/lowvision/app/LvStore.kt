@@ -747,8 +747,8 @@ object LvStore {
 
     fun lensCompare(down: Boolean) {
         val v = s.selected ?: return
-        if (!s.lens.open || s.lens.comparing == down) return
-        set(s.copy(lens = s.lens.copy(comparing = down)), "lens compare $down")
+        val lens = LensRules.hold(s.lens, down) ?: return
+        set(s.copy(lens = lens), "lens compare $down")
         lensHost?.update(s.lens.source, v, down)
     }
 

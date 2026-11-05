@@ -11,6 +11,7 @@ import com.pico.spatial.ui.foundation.dsl.Placement
 import io.embodit.lowvision.ui.home.HomeWindow
 import io.embodit.lowvision.ui.home.LENS_SPOT_ID
 import io.embodit.lowvision.ui.home.LensSpot
+import io.embodit.lowvision.ui.home.SPOT_HEIGHT_DP
 import io.embodit.lowvision.ui.theme.LvTheme
 import io.embodit.lowvision.ui.walk.WALK_STAGE_ID
 import io.embodit.lowvision.ui.walk.WalkScreen
@@ -38,7 +39,7 @@ fun mainApp(scope: SpatialAppScope) =
         WindowContainer(
             LENS_SPOT_ID,
             form = Form.Planar,
-            defaultSize = WindowContainerSize(width = 440.dp, height = 340.dp),
+            defaultSize = WindowContainerSize(width = 440.dp, height = SPOT_HEIGHT_DP.dp),
             placement = { containers.firstOrNull { it.id == HOME_WINDOW_ID || it.id == HOME_AGAIN_ID }?.let { Placement.right(it) } ?: Placement.none() },
         ) { LvTheme { LensSpot() } }
         Stage(id = WALK_STAGE_ID) { LvTheme { WalkScreen() } }

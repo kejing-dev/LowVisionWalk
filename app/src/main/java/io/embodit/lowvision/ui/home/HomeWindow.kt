@@ -539,8 +539,8 @@ private fun LensControls(state: LvState, v: Vision, c: Copy) {
             }
             FitText(c.lensNote, where = "home/c.lensNote", style = LvType.small, color = PicoTheme.colorScheme.labelPrimary, maxLines = 2)
             Spacer(Modifier.weight(1f))
+            // 「按住看原样」 is in the lens spot window, under the picture (v0.1.6: it goes away with the lens window)
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                HoldButton(c.compare, Modifier.weight(1f)) { LvStore.lensCompare(it) }
                 Button(onClick = { LvStore.lensCloseClicked() }, modifier = Modifier.weight(1f).height(52.dp), colors = ButtonDefaults.buttonColors(containerColor = PicoTheme.colorScheme.fillSecondary, contentColor = PicoTheme.colorScheme.labelPrimary)) {
                     FitText(c.closeLens, where = "home/c.closeLens", maxLines = 1)
                 }
