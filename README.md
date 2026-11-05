@@ -23,7 +23,7 @@ PICO OS 6 空间应用，Kotlin + PICO Spatial SDK 6.1.9，界面全部用 Spati
 | | |
 |---|---|
 | ![](docs/shot-01.jpg) 首页：青光眼，剩约 20° 视野 | ![](docs/shot-02.jpg) 戴上体验：管状视野下找杯子 |
-| ![](docs/shot-03.jpg) 读标识：中心暗斑挡住字，下方选词 | ![](docs/shot-04.jpg) 找门口：左侧偏盲 |
+| ![](docs/shot-03.jpg) 读标识：中心暗斑挡在视线正中，下方选词 | ![](docs/shot-04.jpg) 找门口：左侧偏盲 |
 | ![](docs/shot-05.jpg) 滤镜窗：楼梯照片过黄斑滤镜 | ![](docs/shot-06.jpg) 按住看原样：同一张照片不加滤镜 |
 
 演示视频见 [Release v0.1.8](https://github.com/kejing-dev/LowVisionWalk/releases/tag/v0.1.8)（`video-01.mp4`）。**非真实手势录像**：模拟器上用调试广播驱动，录屏约 1 fps，有卡顿感。
