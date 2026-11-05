@@ -161,6 +161,11 @@ The veil is a large transparent surface: shoot each state twice and keep the sec
   dynamic texture to the panel). v0.1.2 submitted the photo once without waiting, the write came before the binding and
   the window stayed black. Photos now run every 250 ms (`LENS picture up <photo>: 2 runs in … ms`), the camera at 15 Hz
   (`LENS picture up camera`, `LENS camera … Hz`).
+- 「按住看原样」 (v0.1.8): in the home window, greyed and inert unless `LensRules.canHold` (lens open, picture up:
+  `LensState.live`, set by `LvStore.lensLive` after the session's second run). Every close path (「关闭滤镜窗」, the
+  picture's ×, the frame window's ×, the service dying / a failed run → `LensController.lost`) resets the state through
+  `LensRules.closed` / `failed`; `LensRulesTest` covers them. v0.1.7 tried Readback Mode to put picture and button in one
+  window; the user chose to keep the SpatialML container (reverted).
 - Emulator: the camera source only shows 「没有摄像头画面」 (no camera pipeline without a camera: a session that asked for
   camera frames never finished destroying, see factory `feedback/pico-cli-feedback.md`). Real camera: headset only.
 
